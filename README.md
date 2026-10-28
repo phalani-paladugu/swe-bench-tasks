@@ -23,9 +23,12 @@ dockerfile-gen
 
 Generated ARM64 images use `Dockerfile`; the original x86 file is saved as
 `Dockerfile.amd` in the same task directory.
-Generate them with `dockerfile-gen-arm64 --instance_ids <task_id>` or
-`dockerfile-gen-arm64 --all` after installation. See [ARM64.md](ARM64.md) for
-environment conversion rules, available images, and build instructions.
+Generate them with `dockerfile-gen-arm64 --instance_ids <task_id>` after
+installation. When ARM64 pins are missing, this builds an ARM64 image, exports
+exact Conda and pip versions, and verifies a rebuild before saving the Dockerfile
+and `environment.arm64.yml`. Existing pinned snapshots are reused. Add `--draft`
+to generate without building, or `--all` to process all tasks. See
+[ARM64.md](ARM64.md) for the pipeline, conversion rules, and build instructions.
 
 ## Install
 

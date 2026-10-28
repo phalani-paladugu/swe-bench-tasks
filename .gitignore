@@ -6,3 +6,4 @@ build/
 .env
 .venv/
 *.DS_Store
+logs/arm64/

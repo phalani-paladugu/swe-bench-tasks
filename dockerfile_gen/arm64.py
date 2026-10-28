@@ -1,8 +1,9 @@
-"""Generate standalone ARM64 Dockerfiles; dependency solving happens at build time."""
+"""Generate pinned ARM64 Dockerfiles, resolving missing environments with Docker."""
 
 import argparse
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -130,17 +131,21 @@ def arm_environment(text: str, *, pinned: bool = False) -> str:
     )
 
 
-def write_dependencies(task_dir: Path, instance: dict, specs: dict) -> str:
+def write_dependencies(
+    task_dir: Path, instance: dict, specs: dict, environment: str | None = None
+) -> str:
     arm_file = task_dir / "environment.arm64.yml"
     env_file = arm_file if arm_file.is_file() else task_dir / "environment.yml"
-    if env_file.is_file():
+    if environment is not None:
+        text = environment
+    elif env_file.is_file():
         text = env_file.read_text()
     elif specs.get("packages") == "environment.yml":
         text = get_environment_yml(instance)
     else:
         # Reuse the repository's Python/package/requirements.txt setup for dev tasks.
         return make_env_script_list(instance, specs)
-    text = arm_environment(text, pinned=arm_file.is_file())
+    text = arm_environment(text, pinned=environment is not None or arm_file.is_file())
     delimiter = generate_heredoc_delimiter(text)
     return make_heredoc_run_command(
         [
@@ -156,7 +161,9 @@ def write_repo_setup(instance: dict, specs: dict) -> str:
     return make_repo_script_list(specs, instance["repo"], instance["base_commit"])
 
 
-def generate(task_dir: Path, mirror_host: str = DEFAULT_MIRROR) -> str:
+def generate(
+    task_dir: Path, mirror_host: str = DEFAULT_MIRROR, environment: str | None = None
+) -> str:
     instance = yaml.safe_load((task_dir / "task.yaml").read_text())
     specs = MAP_REPO_VERSION_TO_SPECS[instance["repo"]][instance["version"]]
     return "\n".join(
@@ -164,7 +171,7 @@ def generate(task_dir: Path, mirror_host: str = DEFAULT_MIRROR) -> str:
             write_base_image(),
             write_system_dependencies(),
             write_conda(mirror_host),
-            write_dependencies(task_dir, instance, specs),
+            write_dependencies(task_dir, instance, specs, environment),
             'RUN echo "source /opt/miniconda3/etc/profile.d/conda.sh && conda activate testbed" > /root/.bashrc\n',
             write_repo_setup(instance, specs),
             "WORKDIR /testbed/\n",
@@ -204,23 +211,63 @@ def main() -> None:
         type=Path,
         help="Write <dir>/<task>/Dockerfile and Dockerfile.amd",
     )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--draft",
+        action="store_true",
+        help="Generate only; do not resolve missing pins",
+    )
+    mode.add_argument(
+        "--refresh-lock",
+        action="store_true",
+        help="Rebuild and verify even when an ARM64 snapshot already exists",
+    )
+    parser.add_argument("--logs-dir", type=Path, default=Path("logs/arm64"))
+    parser.add_argument(
+        "--keep-images",
+        action="store_true",
+        help="Keep temporary resolve/verify images",
+    )
     args = parser.parse_args()
     tasks = {task.name: task for task in task_dirs()}
     wanted = sorted(set(args.instance_ids or tasks))
     unknown = set(wanted) - tasks.keys()
     if unknown:
         parser.error(f"Unknown task IDs: {', '.join(sorted(unknown))}")
+    from .arm64_pipeline import is_fully_pinned, resolve_environment
+
     failed = 0
     for task_id in wanted:
         try:
-            dockerfile = generate(tasks[task_id], args.artifactory_host)
-            print(write_dockerfile(tasks[task_id], dockerfile, args.output_dir))
+            task = tasks[task_id]
+            directory = args.output_dir / task_id if args.output_dir else task
+            saved = directory / "environment.arm64.yml"
+            if not saved.is_file():
+                saved = task / "environment.arm64.yml"
+            environment = saved.read_text() if saved.is_file() else None
+            needs_resolution = environment is None or not is_fully_pinned(environment)
+            if not args.draft and (args.refresh_lock or needs_resolution):
+                environment = resolve_environment(
+                    task,
+                    args.artifactory_host,
+                    args.logs_dir,
+                    environment=environment,
+                    keep_images=args.keep_images,
+                )
+            dockerfile = generate(task, args.artifactory_host, environment)
+            print(write_dockerfile(task, dockerfile, args.output_dir))
+            if environment is not None:
+                (directory / "environment.arm64.yml").write_text(environment)
+            if args.draft and needs_resolution:
+                print(f"{task_id}: draft only; dependencies have not been frozen")
         except (
             OSError,
             ValueError,
             KeyError,
             yaml.YAMLError,
             requests.RequestException,
+            subprocess.SubprocessError,
+            RuntimeError,
         ) as error:
             print(f"{task_id}: {error}", file=sys.stderr)
             failed += 1

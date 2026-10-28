@@ -1,99 +1,103 @@
-
-FROM --platform=linux/amd64 ubuntu:jammy
+# syntax=docker/dockerfile:1
+FROM --platform=linux/arm64 ubuntu:22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
 
-RUN apt update && apt install -y \
-wget \
-git \
-build-essential \
-libffi-dev \
-libtiff-dev \
-python3 \
-python3-pip \
-python-is-python3 \
-jq \
-curl \
-locales \
-locales-all \
-tzdata \
-&& rm -rf /var/lib/apt/lists/*
+RUN apt update && apt install -y wget git build-essential libffi-dev libtiff-dev python3 python3-pip python-is-python3 jq curl ca-certificates bzip2 locales locales-all tzdata && rm -rf /var/lib/apt/lists/*
 
-# Download and install conda
-RUN wget 'https://repo.anaconda.com/miniconda/Miniconda3-py311_23.11.0-2-Linux-x86_64.sh' -O miniconda.sh \
-    && bash miniconda.sh -b -p /opt/miniconda3
-# Add conda to PATH
+# Install Conda from the internal mirror.
+ARG ARTIFACTORY_HOST=us-west-2.artifactory.aws.arm.com
+ENV CONDARC=/etc/conda/condarc
+RUN <<'BOOTSTRAP_CONDA'
+set -eu
+mkdir -p /etc/conda /tmp/swebench-micromamba
+cat > /etc/conda/condarc <<CONDARC_CONFIG
+channel_alias: https://${ARTIFACTORY_HOST}/artifactory/api/conda/
+default_channels:
+  - conda-forge
+channels:
+  - defaults
+CONDARC_CONFIG
+curl -fSL --retry 3 "https://${ARTIFACTORY_HOST}/artifactory/conda-forge/linux-aarch64/micromamba-2.1.0-0.tar.bz2" -o /tmp/swebench-micromamba/micromamba.tar.bz2
+tar -xjf /tmp/swebench-micromamba/micromamba.tar.bz2 -C /tmp/swebench-micromamba bin/micromamba
+/tmp/swebench-micromamba/bin/micromamba --rc-file /etc/conda/condarc create -y -p /opt/miniconda3 --override-channels -c conda-forge mamba conda
+rm -rf /tmp/swebench-micromamba
+BOOTSTRAP_CONDA
 ENV PATH=/opt/miniconda3/bin:$PATH
-# Add conda to shell startup scripts like .bashrc (DO NOT REMOVE THIS)
 RUN conda init --all
-RUN conda config --append channels conda-forge
-
 RUN adduser --disabled-password --gecos 'dog' nonroot
 
-RUN <<EOF_bb5f04f01cf6
+RUN <<EOF_36255d6b7e32
 #!/bin/bash
 set -euxo pipefail
 source /opt/miniconda3/bin/activate
-cat <<'EOF_6d6982f4d632' > /root/environment.yml
+cat > /root/environment.yml <<'EOF_5cbef73ba3de'
 name: testbed
 channels:
-  - defaults
-  - conda-forge
+- conda-forge
 dependencies:
-  - _libgcc_mutex=0.1=main
-  - _openmp_mutex=5.1=1_gnu
-  - ca-certificates=2024.12.31=h06a4308_0
-  - ld_impl_linux-64=2.40=h12ee557_0
-  - libffi=3.4.4=h6a678d5_1
-  - libgcc-ng=11.2.0=h1234567_1
-  - libgomp=11.2.0=h1234567_1
-  - libstdcxx-ng=11.2.0=h1234567_1
-  - ncurses=6.4=h6a678d5_0
-  - openssl=3.0.15=h5eee18b_0
-  - pip=25.0=py39h06a4308_0
-  - python=3.9.21=he870216_1
-  - readline=8.2=h5eee18b_0
-  - sqlite=3.45.3=h5eee18b_0
-  - tk=8.6.14=h39e8969_0
-  - tzdata=2025a=h04d1e81_0
-  - wheel=0.45.1=py39h06a4308_0
-  - xz=5.6.4=h5eee18b_1
-  - zlib=1.2.13=h5eee18b_1
-  - pip:
-      - attrs==23.1.0
-      - coverage==7.6.12
-      - exceptiongroup==1.1.3
-      - execnet==2.0.2
-      - hypothesis==6.82.6
-      - iniconfig==2.0.0
-      - numpy==1.25.2
-      - packaging==23.1
-      - pluggy==1.3.0
-      - psutil==5.9.5
-      - pyerfa==2.0.0.3
-      - pytest==7.4.0
-      - pytest-arraydiff==0.5.0
-      - pytest-astropy==0.10.0
-      - pytest-astropy-header==0.2.2
-      - pytest-cov==4.1.0
-      - pytest-doctestplus==1.0.0
-      - pytest-filter-subpackage==0.1.2
-      - pytest-mock==3.11.1
-      - pytest-openfiles==0.5.0
-      - pytest-remotedata==0.4.0
-      - pytest-xdist==3.3.1
-      - pyyaml==6.0.1
-      - setuptools==68.0.0
-      - sortedcontainers==2.4.0
-      - tomli==2.0.1
-prefix: /opt/miniconda3/envs/testbed
-
-EOF_6d6982f4d632
-conda env create -f /root/environment.yml
-conda activate testbed
-EOF_bb5f04f01cf6
-
+- _openmp_mutex=4.5=20_gnu
+- bzip2=1.0.8=h4777abc_10
+- ca-certificates=2026.10.23=hbd8a1cb_0
+- ld_impl_linux-aarch64=2.46.1=default_h1979696_103
+- libffi=3.7.0=hdaad0be_1
+- libgcc-ng=16.2.0=he9431aa_7
+- libgcc=16.2.0=h205dda4_7
+- libgomp=16.2.0=h8acb6b2_7
+- liblzma-devel=5.8.3=he30d5cf_1
+- liblzma=5.8.3=he30d5cf_1
+- libnsl=2.0.1=h86ecc28_1
+- libsqlite=3.54.1=hd26f1b6_101
+- libstdcxx-ng=16.2.0=hdbbeba8_7
+- libstdcxx=16.2.0=hef695bb_7
+- libuuid=2.42.4=hd6fdeab_0
+- libxcrypt=4.4.38=h80f16a2_0
+- libzlib=1.3.2=hdc9db2a_3
+- ncurses=6.6=h2b6f883_1
+- openssl=3.6.5=he6ad1d5_0
+- pip=25.0.1=pyh8b19718_0
+- python=3.9.21=h59a44ae_2_cpython
+- readline=8.3=ha7194a6_1
+- sqlite=3.54.1=h363059a_101
+- tk=8.6.13=noxft_hf03c496_4
+- tzdata=2026e=h5d301ff_0
+- wheel=0.45.1=pyhd8ed1ab_1
+- xz-gpl-tools=5.8.3=hd704e39_1
+- xz-tools=5.8.3=he30d5cf_1
+- xz=5.8.3=hd704e39_1
+- zlib=1.3.2=hdc9db2a_3
+- zstd=1.5.7=h9d15635_7
+- pip:
+  - attrs==23.1.0
+  - coverage==7.6.12
+  - exceptiongroup==1.1.3
+  - execnet==2.0.2
+  - hypothesis==6.82.6
+  - iniconfig==2.0.0
+  - numpy==1.25.2
+  - packaging==23.1
+  - pluggy==1.3.0
+  - psutil==5.9.5
+  - pyerfa==2.0.0.3
+  - pytest-arraydiff==0.5.0
+  - pytest-astropy-header==0.2.2
+  - pytest-astropy==0.10.0
+  - pytest-cov==4.1.0
+  - pytest-doctestplus==1.0.0
+  - pytest-filter-subpackage==0.1.2
+  - pytest-mock==3.11.1
+  - pytest-openfiles==0.5.0
+  - pytest-remotedata==0.4.0
+  - pytest-xdist==3.3.1
+  - pytest==7.4.0
+  - pyyaml==6.0.1
+  - setuptools==68.0.0
+  - sortedcontainers==2.4.0
+  - tomli==2.0.1
+EOF_5cbef73ba3de
+conda env create --file /root/environment.yml
+EOF_36255d6b7e32
 
 RUN echo "source /opt/miniconda3/etc/profile.d/conda.sh && conda activate testbed" > /root/.bashrc
 
@@ -127,6 +131,5 @@ git config --global user.email setup@swebench.com
 git config --global user.name SWE-bench
 git commit --allow-empty -am SWE-bench
 EOF_eb56a60b88d1
-
 
 WORKDIR /testbed/
