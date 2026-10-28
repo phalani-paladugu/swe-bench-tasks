@@ -97,6 +97,15 @@ Environment selection is:
    Requirements files are fetched at `environment_setup_commit`, falling back
    to `base_commit`, so those tasks need GitHub access during generation.
 
+Legacy Astropy snapshots request `setuptools=38.2.4`, which is unavailable as an
+ARM64 Conda package in the mirror. The converter keeps version 38.2.4 and installs
+its [platform-independent PyPI wheel](https://pypi.org/project/setuptools/38.2.4/#files)
+instead. For these environments it creates the Conda environment first, installs
+`setuptools==38.2.4`, then installs the remaining pip requirements. The ordering
+lets legacy source packages prepare their metadata with the required setuptools
+version. Both the initial build and the rebuild from exported pins use this
+sequence; Python and application package versions are preserved.
+
 Conda channels are directed to the internal conda-forge mirror. Use
 `--artifactory-host <hostname>` to change the generated default. Pip package
 sources are unchanged.
@@ -117,6 +126,7 @@ benchmark tests.
 
 | Task | Dockerfile | Validation |
 | --- | --- | --- |
+| `astropy__astropy-6938` | [Dockerfile](tasks/astropy__astropy-6938/Dockerfile) | Resolve/export/rebuild verified: 27 Conda build pins, 41 pip pins, Python 3.6.13; table/FITS smoke checks and all 11 baseline PASS_TO_PASS tests passed |
 | `astropy__astropy-11693` | [Dockerfile](tasks/astropy__astropy-11693/Dockerfile) | Resolve/export/rebuild verification passed: 31 Conda build pins, 26 pip pins, Python 3.9.21; import/table smoke tests passed |
 | `astropy__astropy-13236` | [Dockerfile](tasks/astropy__astropy-13236/Dockerfile) | ARM64 build, dependency versions, Git checkout, and import/table smoke test passed |
 
@@ -176,15 +186,24 @@ completed. Shared files such as
 
 Run focused tests with `python -m unittest discover -s tests -v`.
 
-On 2026-10-28, all 19 tests passed. All 2,519 tasks generated successfully in draft
-mode in a temporary directory; all 7,557 shell blocks passed syntax checks and
-their x86 archives matched the source files byte-for-byte.
+On 2026-10-28, all 23 focused tests passed. The full draft check before the legacy
+setuptools fix covered all 2,519 tasks: all 7,557 shell blocks passed syntax checks
+and the x86 archives matched the source files byte-for-byte. After the fix, all
+11 affected legacy drafts passed generation and shell syntax checks; generated
+Dockerfiles for Astropy 11693 and 13236 remained byte-for-byte unchanged.
 
 The complete resolve/export/rebuild pipeline passed for Astropy 11693: both
 images matched 31 Conda version/build pins, 26 pip pins, and all 28 third-party
 Python distribution versions. Offline import/table tests passed in both images.
 The saved Dockerfile matched the verified build input, and a subsequent command
 reused the snapshot without changing the generated files.
+
+The same pipeline passed for legacy Astropy 6938, preserving Python 3.6.13 and
+all 44 original third-party Python distribution versions, including setuptools
+38.2.4 and NumPy 1.16.0. Both images passed offline table/FITS smoke checks and
+the task's 11 baseline PASS_TO_PASS tests. The exported environment contains
+27 Conda version/build pins and 41 pip pins. Its original x86 Dockerfile was
+preserved, and repeat generation reused the verified snapshot unchanged.
 
 Earlier ARM64 builds and import/table smoke tests passed for Astropy 13236
 (saved ARM64 pins) and Astropy 14309 (converted x86 snapshot), with dependency

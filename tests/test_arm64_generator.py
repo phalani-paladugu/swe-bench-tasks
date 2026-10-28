@@ -11,6 +11,68 @@ from dockerfile_gen import arm64
 
 
 class Arm64GeneratorTests(unittest.TestCase):
+    def test_legacy_setuptools_moves_to_pip_without_changing_versions(self):
+        task = Path("tasks/astropy__astropy-6938")
+        source = yaml.safe_load((task / "environment.yml").read_text())
+        result = yaml.safe_load(arm64.arm_environment(yaml.safe_dump(source)))
+        conda = [d for d in result["dependencies"] if isinstance(d, str)]
+        pip = next(d["pip"] for d in result["dependencies"] if isinstance(d, dict))
+        original_pip = next(
+            d["pip"] for d in source["dependencies"] if isinstance(d, dict)
+        )
+        self.assertFalse(any(d.startswith("setuptools=") for d in conda))
+        self.assertIn("python=3.6.13", conda)
+        self.assertEqual(pip, original_pip + ["setuptools==38.2.4"])
+
+    def test_legacy_setuptools_is_installed_before_source_package_metadata(self):
+        task = Path("tasks/astropy__astropy-6938")
+        environment = arm64.arm_environment((task / "environment.yml").read_text())
+        # The same install order must apply to both resolution and frozen rebuilds.
+        for override in (None, environment):
+            with self.subTest(override=override is not None):
+                generated = arm64.generate(task, environment=override)
+                bootstrap = generated.index("python -m pip install setuptools==38.2.4")
+                self.assertLess(generated.index("conda env create"), bootstrap)
+                self.assertLess(
+                    bootstrap,
+                    generated.index("python -m pip install -r /root/requirements.txt"),
+                )
+                self.assertIn("numpy==1.16.0", generated)
+                for block in re.finditer(
+                    r"^RUN <<'?([\w]+)'?\n(.*?)^\1$", generated, re.M | re.S
+                ):
+                    subprocess.run(
+                        ["bash", "-n"], input=block[2], text=True, check=True
+                    )
+
+    def test_legacy_migration_deduplicates_and_rejects_conflicting_pip_pin(self):
+        for version in ("38.2.4", "68.0.0"):
+            source = yaml.safe_dump(
+                {
+                    "dependencies": [
+                        "setuptools=38.2.4=py36_0",
+                        {"pip": [f"setuptools=={version}"]},
+                    ]
+                }
+            )
+            if version == "38.2.4":
+                result = yaml.safe_load(arm64.arm_environment(source))
+                self.assertEqual(
+                    result["dependencies"], [{"pip": ["setuptools==38.2.4"]}]
+                )
+            else:
+                with self.assertRaisesRegex(ValueError, "Conflicting pip requirement"):
+                    arm64.arm_environment(source)
+
+    def test_modern_and_explicit_arm_setuptools_pins_are_preserved(self):
+        for source, pinned in (
+            ("dependencies: [setuptools=58.0.4=old_build]", False),
+            ("dependencies: [setuptools=38.2.4=explicit_build]", True),
+        ):
+            result = yaml.safe_load(arm64.arm_environment(source, pinned=pinned))
+            self.assertIsInstance(result["dependencies"][0], str)
+            self.assertTrue(result["dependencies"][0].startswith("setuptools="))
+
     def test_in_place_generation_saves_x86_once(self):
         with tempfile.TemporaryDirectory() as directory:
             task = Path(directory)

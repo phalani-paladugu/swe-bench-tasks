@@ -36,6 +36,8 @@ libgfortran4 libgfortran5 liblzma libnsl libsqlite libuuid libxcrypt libzlib
 ncurses openssl readline sqlite tk tzdata xz zlib zstd ld_impl_linux-aarch64
 blas blas-devel libblas libcblas liblapack liblapacke openblas libopenblas""".split()
 )
+# Unavailable in the ARM64 mirror; PyPI provides a platform-independent wheel.
+CONDA_TO_PIP = {"setuptools=38.2.4": "setuptools==38.2.4"}
 
 
 def write_base_image() -> str:
@@ -89,6 +91,7 @@ def arm_environment(text: str, *, pinned: bool = False) -> str:
     ):
         raise ValueError("Environment YAML must contain a dependencies list")
     dependencies = []
+    migrated = []
     for dependency in environment["dependencies"]:
         if isinstance(dependency, dict):
             if dependency == {"pip": None} or dependency == {"pip": []}:
@@ -124,7 +127,24 @@ def arm_environment(text: str, *, pinned: bool = False) -> str:
                 dependency = name
             else:
                 dependency = re.sub(r"^([\w.-]+=[^=]+)=.+$", r"\1", dependency)
+            if dependency in CONDA_TO_PIP:
+                migrated.append(CONDA_TO_PIP[dependency])
+                continue
         dependencies.append(dependency)
+    if migrated:
+        pip = next((d["pip"] for d in dependencies if isinstance(d, dict)), None)
+        if pip is None:
+            pip = []
+            dependencies.append({"pip": pip})
+        for requirement in migrated:
+            name = requirement.split("==")[0]
+            existing = [
+                p for p in pip if re.match(rf"{re.escape(name)}\s*[=<>!~ @]", p)
+            ]
+            if existing and existing != [requirement]:
+                raise ValueError(f"Conflicting pip requirement for {name}: {existing}")
+            if not existing:
+                pip.append(requirement)
     return yaml.safe_dump(
         {"name": "testbed", "channels": ["conda-forge"], "dependencies": dependencies},
         sort_keys=False,
@@ -146,14 +166,38 @@ def write_dependencies(
         # Reuse the repository's Python/package/requirements.txt setup for dev tasks.
         return make_env_script_list(instance, specs)
     text = arm_environment(text, pinned=environment is not None or arm_file.is_file())
-    delimiter = generate_heredoc_delimiter(text)
-    return make_heredoc_run_command(
-        [
-            "source /opt/miniconda3/bin/activate",
-            f"cat > /root/environment.yml <<'{delimiter}'\n{text}{delimiter}",
-            "conda env create --file /root/environment.yml",
+    parsed = yaml.safe_load(text)
+    pip = [
+        pin
+        for dependency in parsed["dependencies"]
+        if isinstance(dependency, dict)
+        for pin in dependency["pip"]
+    ]
+    legacy_setuptools = "setuptools==38.2.4" in pip
+    if legacy_setuptools:
+        # Legacy source packages need this setuptools installed before pip prepares metadata.
+        parsed["dependencies"] = [
+            d for d in parsed["dependencies"] if isinstance(d, str)
         ]
-    )
+        text = yaml.safe_dump(parsed, sort_keys=False)
+    delimiter = generate_heredoc_delimiter(text)
+    commands = [
+        "source /opt/miniconda3/bin/activate",
+        f"cat > /root/environment.yml <<'{delimiter}'\n{text}{delimiter}",
+        "conda env create --file /root/environment.yml",
+    ]
+    if legacy_setuptools:
+        requirements = "\n".join(pip) + "\n"
+        delimiter = generate_heredoc_delimiter(requirements)
+        commands.extend(
+            [
+                "conda activate testbed",
+                "python -m pip install setuptools==38.2.4",
+                f"cat > /root/requirements.txt <<'{delimiter}'\n{requirements}{delimiter}",
+                "python -m pip install -r /root/requirements.txt",
+            ]
+        )
+    return make_heredoc_run_command(commands)
 
 
 def write_repo_setup(instance: dict, specs: dict) -> str:

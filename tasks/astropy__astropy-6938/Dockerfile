@@ -1,114 +1,118 @@
-
-FROM --platform=linux/amd64 ubuntu:jammy
+# syntax=docker/dockerfile:1
+FROM --platform=linux/arm64 ubuntu:22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
 
-RUN apt update && apt install -y \
-wget \
-git \
-build-essential \
-libffi-dev \
-libtiff-dev \
-python3 \
-python3-pip \
-python-is-python3 \
-jq \
-curl \
-locales \
-locales-all \
-tzdata \
-&& rm -rf /var/lib/apt/lists/*
+RUN apt update && apt install -y wget git build-essential libffi-dev libtiff-dev python3 python3-pip python-is-python3 jq curl ca-certificates bzip2 locales locales-all tzdata && rm -rf /var/lib/apt/lists/*
 
-# Download and install conda
-RUN wget 'https://repo.anaconda.com/miniconda/Miniconda3-py311_23.11.0-2-Linux-x86_64.sh' -O miniconda.sh \
-    && bash miniconda.sh -b -p /opt/miniconda3
-# Add conda to PATH
+# Install Conda from the internal mirror.
+ARG ARTIFACTORY_HOST=us-west-2.artifactory.aws.arm.com
+ENV CONDARC=/etc/conda/condarc
+RUN <<'BOOTSTRAP_CONDA'
+set -eu
+mkdir -p /etc/conda /tmp/swebench-micromamba
+cat > /etc/conda/condarc <<CONDARC_CONFIG
+channel_alias: https://${ARTIFACTORY_HOST}/artifactory/api/conda/
+default_channels:
+  - conda-forge
+channels:
+  - defaults
+CONDARC_CONFIG
+curl -fSL --retry 3 "https://${ARTIFACTORY_HOST}/artifactory/conda-forge/linux-aarch64/micromamba-2.1.0-0.tar.bz2" -o /tmp/swebench-micromamba/micromamba.tar.bz2
+tar -xjf /tmp/swebench-micromamba/micromamba.tar.bz2 -C /tmp/swebench-micromamba bin/micromamba
+/tmp/swebench-micromamba/bin/micromamba --rc-file /etc/conda/condarc create -y -p /opt/miniconda3 --override-channels -c conda-forge mamba conda
+rm -rf /tmp/swebench-micromamba
+BOOTSTRAP_CONDA
 ENV PATH=/opt/miniconda3/bin:$PATH
-# Add conda to shell startup scripts like .bashrc (DO NOT REMOVE THIS)
 RUN conda init --all
-RUN conda config --append channels conda-forge
-
 RUN adduser --disabled-password --gecos 'dog' nonroot
 
-RUN <<EOF_d919b8a562e6
+RUN <<EOF_a3906642753f
 #!/bin/bash
 set -euxo pipefail
 source /opt/miniconda3/bin/activate
-cat <<'EOF_bcfdb8b5a5ce' > /root/environment.yml
+cat > /root/environment.yml <<'EOF_36daaa701609'
 name: testbed
 channels:
-  - defaults
-  - conda-forge
+- conda-forge
 dependencies:
-  - _libgcc_mutex=0.1=main
-  - _openmp_mutex=5.1=1_gnu
-  - ca-certificates=2024.9.24=h06a4308_0
-  - certifi=2021.5.30=py36h06a4308_0
-  - ld_impl_linux-64=2.40=h12ee557_0
-  - libffi=3.3=he6710b0_2
-  - libgcc-ng=11.2.0=h1234567_1
-  - libgomp=11.2.0=h1234567_1
-  - libstdcxx-ng=11.2.0=h1234567_1
-  - ncurses=6.4=h6a678d5_0
-  - openssl=1.1.1w=h7f8727e_0
-  - pip=21.2.2=py36h06a4308_0
-  - python=3.6.13=h12debd9_1
-  - readline=8.2=h5eee18b_0
-  - setuptools=38.2.4=py36_0
-  - sqlite=3.45.3=h5eee18b_0
-  - tk=8.6.14=h39e8969_0
-  - wheel=0.37.1=pyhd3eb1b0_0
-  - xz=5.4.6=h5eee18b_1
-  - zlib=1.2.13=h5eee18b_1
-  - pip:
-      - apipkg==2.1.1
-      - async-generator==1.10
-      - attrs==17.3.0
-      - contextvars==2.4
-      - coverage==6.2
-      - cython==0.27.3
-      - exceptiongroup==0.0.0a0
-      - execnet==1.5.0
-      - hypothesis==3.44.2
-      - idna==3.10
-      - immutables==0.19
-      - jinja2==2.10
-      - markupsafe==1.0
-      - numpy==1.16.0
-      - outcome==1.0.0
-      - packaging==16.8
-      - pluggy==0.6.0
-      - psutil==5.4.2
-      - py==1.11.0
-      - pyerfa==1.7.0
-      - pyparsing==3.1.4
-      - pytest==3.3.1
-      - pytest-arraydiff==0.1
-      - pytest-astropy==0.2.1
-      - pytest-astropy-header==0.1
-      - pytest-cov==2.5.1
-      - pytest-doctestplus==0.1.2
-      - pytest-filter-subpackage==0.1
-      - pytest-forked==0.2
-      - pytest-mock==1.6.3
-      - pytest-openfiles==0.2.0
-      - pytest-remotedata==0.2.0
-      - pytest-xdist==1.20.1
-      - pyyaml==3.12
-      - six==1.16.0
-      - sniffio==1.2.0
-      - sortedcontainers==1.5.9
-      - tomli==0.2.0
-      - trio==0.8.0
-      - typing-extensions==4.1.1
-prefix: /opt/miniconda3/envs/testbed
-
-EOF_bcfdb8b5a5ce
-conda env create -f /root/environment.yml
+- _openmp_mutex=4.5=20_gnu
+- ca-certificates=2026.10.23=hbd8a1cb_0
+- certifi=2021.5.30=py36h704843e_0
+- ld_impl_linux-aarch64=2.46.1=bootstrap_h5389653_3
+- libffi=3.4.6=he21f813_1
+- libgcc-ng=16.2.0=he9431aa_7
+- libgcc=16.2.0=h205dda4_7
+- libgomp=16.2.0=h8acb6b2_7
+- liblzma-devel=5.8.3=he30d5cf_1
+- liblzma=5.8.3=he30d5cf_1
+- libsqlite=3.46.0=hf51ef55_0
+- libstdcxx-ng=16.2.0=hdbbeba8_7
+- libstdcxx=16.2.0=hef695bb_7
+- libzlib=1.2.13=h68df207_6
+- ncurses=6.6=h2b6f883_1
+- openssl=1.1.1w=h31becfc_0
+- pip=21.2.2=pyhd8ed1ab_0
+- python=3.6.13=h30375ac_2_cpython
+- python_abi=3.6=2_cp36m
+- readline=8.3=ha7194a6_1
+- sqlite=3.46.0=hdc7ab3c_0
+- tk=8.6.13=h194ca79_0
+- wheel=0.37.1=pyhd8ed1ab_0
+- xz-gpl-tools=5.8.3=hd704e39_1
+- xz-tools=5.8.3=he30d5cf_1
+- xz=5.8.3=hd704e39_1
+- zlib=1.2.13=h68df207_6
+EOF_36daaa701609
+conda env create --file /root/environment.yml
 conda activate testbed
-EOF_d919b8a562e6
-
+python -m pip install setuptools==38.2.4
+cat > /root/requirements.txt <<'EOF_146107461d2e'
+apipkg==2.1.1
+async-generator==1.10
+attrs==17.3.0
+contextvars==2.4
+coverage==6.2
+cython==0.27.3
+exceptiongroup==0.0.0a0
+execnet==1.5.0
+hypothesis==3.44.2
+idna==3.10
+immutables==0.19
+jinja2==2.10
+markupsafe==1.0
+numpy==1.16.0
+outcome==1.0.0
+packaging==16.8
+pluggy==0.6.0
+psutil==5.4.2
+py==1.11.0
+pyerfa==1.7.0
+pyparsing==3.1.4
+pytest-arraydiff==0.1
+pytest-astropy-header==0.1
+pytest-astropy==0.2.1
+pytest-cov==2.5.1
+pytest-doctestplus==0.1.2
+pytest-filter-subpackage==0.1
+pytest-forked==0.2
+pytest-mock==1.6.3
+pytest-openfiles==0.2.0
+pytest-remotedata==0.2.0
+pytest-xdist==1.20.1
+pytest==3.3.1
+pyyaml==3.12
+setuptools==38.2.4
+six==1.16.0
+sniffio==1.2.0
+sortedcontainers==1.5.9
+tomli==0.2.0
+trio==0.8.0
+typing-extensions==4.1.1
+EOF_146107461d2e
+python -m pip install -r /root/requirements.txt
+EOF_a3906642753f
 
 RUN echo "source /opt/miniconda3/etc/profile.d/conda.sh && conda activate testbed" > /root/.bashrc
 
@@ -141,6 +145,5 @@ git config --global user.email setup@swebench.com
 git config --global user.name SWE-bench
 git commit --allow-empty -am SWE-bench
 EOF_be4498193a2d
-
 
 WORKDIR /testbed/
