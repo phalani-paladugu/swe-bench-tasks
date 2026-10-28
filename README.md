@@ -19,6 +19,11 @@ dockerfile-gen
 
 `Dockerfile` and `eval.sh` are regenerated in place under `tasks/<instance_id>/`, from that task's `task.yaml`.
 
+## ARM64 images
+
+ARM64 variants live alongside each task's `Dockerfile` as `Dockerfile.arm64`.
+See [ARM64.md](ARM64.md) for available images and build instructions.
+
 ## Install
 
 ```bash
