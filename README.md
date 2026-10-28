@@ -21,8 +21,11 @@ dockerfile-gen
 
 ## ARM64 images
 
-ARM64 variants live alongside each task's `Dockerfile` as `Dockerfile.arm64`.
-See [ARM64.md](ARM64.md) for available images and build instructions.
+Generated ARM64 images use `Dockerfile`; the original x86 file is saved as
+`Dockerfile.amd` in the same task directory.
+Generate them with `dockerfile-gen-arm64 --instance_ids <task_id>` or
+`dockerfile-gen-arm64 --all` after installation. See [ARM64.md](ARM64.md) for
+environment conversion rules, available images, and build instructions.
 
 ## Install
 

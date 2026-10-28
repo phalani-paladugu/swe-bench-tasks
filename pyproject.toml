@@ -8,12 +8,14 @@ version = "0.1.0"
 description = "Dockerfile generator for SWE-bench (original Python benchmarks)"
 requires-python = ">=3.10"
 dependencies = [
+    "PyYAML>=6.0",
     "requests",
     "unidiff",
 ]
 
 [project.scripts]
 dockerfile-gen = "dockerfile_gen:main"
+dockerfile-gen-arm64 = "dockerfile_gen.arm64:main"
 
 [tool.setuptools.packages.find]
 include = ["dockerfile_gen*"]
