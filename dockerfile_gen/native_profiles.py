@@ -3,7 +3,7 @@
 import re
 
 
-# Validated with Astropy 14309 and Django 15104.
+# Validated with Astropy 14309 and Django 15104/16527.
 # Each tuple is (x86 version, ARM version, reason).
 # Match both Python and the source package version; never apply to arbitrary pins.
 PROFILES = {
@@ -41,17 +41,17 @@ PROFILES = {
         "ncurses": (
             "6.4",
             "6.5",
-            "Minimum ncurses version required by ARM Python 3.9.20.",
+            "Minimum ncurses version required by the supported ARM Python builds.",
         ),
         "openssl": (
             "3.0.15",
             "3.3.2",
-            "Minimum OpenSSL version required by ARM Python 3.9.20.",
+            "Minimum OpenSSL version required by the supported ARM Python builds.",
         ),
         "sqlite": (
             "3.45.3",
             "3.46.1",
-            "Minimum SQLite version required by ARM Python 3.9.20.",
+            "Minimum SQLite version required by the supported ARM Python builds.",
         ),
         "tk": (
             "8.6.14",
@@ -69,6 +69,16 @@ PROFILES = {
             "ARM Python requires libzlib >=1.3.1; keep zlib and libzlib aligned.",
         ),
     },
+}
+
+# The mirror's Python 3.11.10 builds require the same runtime versions, plus libuuid.
+PROFILES["3.11.10"] = {
+    **PROFILES["3.9.20"],
+    "libuuid": (
+        "1.41.5",
+        "2.38.1",
+        "1.41.5 is unavailable; ARM Python 3.11.10 requires libuuid >=2.38.1.",
+    ),
 }
 
 

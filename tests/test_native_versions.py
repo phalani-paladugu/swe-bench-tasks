@@ -38,12 +38,29 @@ class NativeVersionTests(unittest.TestCase):
         self.assertIn("Python 3.9.20 profile", profile["libffi"]["reason"])
         for changed in (
             SOURCE.replace("python=3.9.20", "python=3.9.21"),
+            SOURCE.replace("python=3.9.20", "python=3.11.11"),
             SOURCE.replace("python=3.9.20=x86_build", "python=3.9"),
             SOURCE.replace("libffi=3.4.4", "libffi=3.3"),
             SOURCE.replace("libffi=3.4.4=x86_build", "libffi>=3.4"),
         ):
             with self.subTest(source=changed):
                 self.assertEqual(native_profile(yaml.safe_load(changed)), {})
+
+    def test_python_311_profile_pins_libuuid_without_changing_applications(self):
+        source = yaml.safe_load(SOURCE.replace("python=3.9.20", "python=3.11.10"))
+        source["dependencies"].insert(1, "libuuid=1.41.5=x86_build")
+        profile = native_profile(source)
+        self.assertEqual(profile["libuuid"]["version"], "2.38.1")
+        self.assertIn("Python 3.11.10 profile", profile["libuuid"]["reason"])
+        converted = yaml.safe_load(
+            arm64.arm_environment(yaml.safe_dump(source), native_versions=profile)
+        )
+        self.assertIn("libuuid==2.38.1", converted["dependencies"])
+        self.assertIn("libffi==3.4.6", converted["dependencies"])
+        self.assertIn("python=3.11.10", converted["dependencies"])
+        self.assertIn({"pip": ["pytest==7.4.0"]}, converted["dependencies"])
+        source["dependencies"][0] = "python=3.9.20=x86_build"
+        self.assertNotIn("libuuid", native_profile(source))
 
     def test_shared_profile_uses_effective_arm_python_when_relocking(self):
         with tempfile.TemporaryDirectory() as directory:

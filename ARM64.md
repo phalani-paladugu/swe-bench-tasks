@@ -122,7 +122,7 @@ ARM64 Python builds require newer runtimes than their x86 equivalents. The share
 profiles in [dockerfile_gen/native_profiles.py](dockerfile_gen/native_profiles.py)
 reuse validated substitutions across tasks. A substitution applies only when both
 the effective Python version and the original native package version match its
-profile entry. The current shared profile covers Python 3.9.20; unknown Python
+profile entry. The shared profiles cover Python 3.9.20 and 3.11.10; unknown Python
 versions, native versions, and version ranges retain their original constraints.
 When relocking an existing ARM snapshot, profile selection uses its retained Python
 version. Task-specific overrides take precedence over a shared profile.
@@ -185,6 +185,7 @@ benchmark tests.
 | `astropy__astropy-13236` | [Dockerfile](tasks/astropy__astropy-13236/Dockerfile) | Resolve/export/rebuild verified: 31 Conda build pins, 26 pip pins, Python 3.9.23; table/FITS smoke checks passed; original table tests matched the previous image's results, including two existing failures |
 | `astropy__astropy-14309` | [Dockerfile](tasks/astropy__astropy-14309/Dockerfile) | Resolve/export/rebuild verified: 30 Conda build pins, 26 pip pins, Python 3.9.20; table/FITS smoke checks and all 141 baseline PASS_TO_PASS tests passed |
 | `django__django-15104` | [Dockerfile](tasks/django__django-15104/Dockerfile) | Resolve/export/rebuild verified: 31 Conda build pins, 57 pip pins, Python 3.9.20; database/import smoke checks and all 138 original migration-autodetector tests passed |
+| `django__django-16527` | [Dockerfile](tasks/django__django-16527/Dockerfile) | Resolve/export/rebuild verified: 32 Conda build pins, 53 pip pins, Python 3.11.10; database/import smoke checks and all 6 original admin template-tag tests passed |
 
 Astropy 11693's unmodified offline baseline run passed 26 tests and failed one
 because the bundled leap-second data is expired. All 27 passed when rerun with
@@ -260,13 +261,15 @@ completed. Shared files such as
 
 Run focused tests with `python -m unittest discover -s tests -v`.
 
-On 2026-10-28, all 32 focused tests passed, including exact native constraints,
+On 2026-10-28, all 33 focused tests passed, including exact native constraints,
 profile version matching, override precedence, preservation of ARM application
 versions during relocking, rejection of native version drift, and retention of
 native packages hidden by same-named Python packages. Ruff checks passed. All 2,519
 tasks generated in draft mode with the shared native profiles; all archived x86
 Dockerfiles matched their source files byte-for-byte. Draft generation does not
 establish that a task's dependencies can resolve on ARM64.
+After adding the Python 3.11.10 profile, all 93 tasks using that version were
+generated again in draft mode, with unchanged x86 archives.
 
 Astropy 6938, 11693, and 13236 passed the complete resolve/export/rebuild pipeline,
 native-pin comparison, and offline table/FITS smoke checks. Their Python versions
@@ -300,8 +303,20 @@ omits the native package. All 138 tests in the original
 was run because some upstream PASS_TO_PASS entries are descriptions rather than
 runnable names. Database and native-package import checks passed in the rebuilt
 image. Reports and the preserved original failure are in
-`logs/arm64/django__django-15104/`. All five saved ARM64 tasks regenerated without
-changing their snapshots, Dockerfiles, or x86 archives.
+`logs/arm64/django__django-15104/`.
+
+Django 16527 uses the shared Python 3.11.10 native profile, including
+`libuuid=2.38.1` in place of the unavailable x86 version 1.41.5. The complete
+resolve/export/rebuild pipeline passed with matching 32 Conda build pins,
+53 pip pins, and all 56 third-party Python distribution versions. The original
+Python 3.11.10, pip 24.2, setuptools 75.1.0, wheel 0.44.0, and all pip-package
+versions were retained. All 6 tests in the original `admin_views.test_templatetags`
+module passed offline in both images. Database and native-package import checks
+passed in the rebuilt image. The saved Dockerfile matched the verified build
+input, and its x86 archive matched the original byte-for-byte. Reports and the
+preserved original failure are in `logs/arm64/django__django-16527/`.
+All six saved ARM64 tasks regenerated without changing their snapshots,
+Dockerfiles, or x86 archives.
 
 Other tasks may need native overrides before they can build. The full benchmark,
 including evaluation with the task's test and solution patches, has not been run.
