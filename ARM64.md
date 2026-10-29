@@ -26,6 +26,8 @@ The default command produces pinned task dependencies. When a fully pinned
 3. Export the installed `testbed` environment: Conda `name=version=build` pins
    and pip `name==version` pins. Exclude the task package installed from
    `/testbed`; the Dockerfile continues to install that from its Git commit.
+   Preserve native runtime records even when a same-named Python package hides
+   them from Conda's export, such as the native and Python `tzdata` packages.
 4. Generate and build a second Dockerfile containing those exact pins.
 5. Inspect both images without network access. Check ARM64 architecture,
    internal Conda mirror URLs, base commit, removed Git remotes, matching
@@ -51,7 +53,8 @@ dockerfile-gen-arm64 --instance_ids astropy__astropy-6938 --relock-native
 
 This retains the existing ARM64 Python and application package versions, including
 pip pins, and replaces native requirements with the task's x86 version pins plus
-the explicit exceptions in `native-versions.arm64.yml`. Conda may choose different
+matching shared-profile substitutions and the explicit exceptions in
+`native-versions.arm64.yml`. Conda may choose different
 ARM builds of the retained application versions to satisfy those runtimes.
 ARM-only native dependencies are resolved again instead of carrying forward
 unnecessarily new pins. The command rebuilds and verifies before replacing files.
@@ -107,16 +110,24 @@ Environment selection is:
    versions and the pip section, remove Conda build identifiers, remove
    x86/defaults implementation packages such as `_libgcc_mutex` and `numpy-base`,
    change the linker to `ld_impl_linux-aarch64`, and retain native versions using
-   exact Conda `name==version` requirements. For names in `NATIVE_RUNTIME`, only
-   explicit task overrides can change those versions. Explicit input version
+   exact Conda `name==version` requirements. For names in `NATIVE_RUNTIME`, matching
+   shared profiles and explicit task overrides can change those versions. Input version
    ranges are retained; empty pip sections are omitted.
 3. Tasks without a snapshot use the existing repository/version specifications.
    Requirements files are fetched at `environment_setup_commit`, falling back
    to `base_commit`, so those tasks need GitHub access during generation.
 
 Some x86 defaults-channel versions are absent from ARM64 conda-forge, and some
-ARM64 Python builds require newer runtimes than their x86 equivalents. Declare
-these exceptions in `tasks/<instance_id>/native-versions.arm64.yml`:
+ARM64 Python builds require newer runtimes than their x86 equivalents. The shared
+profiles in [dockerfile_gen/native_profiles.py](dockerfile_gen/native_profiles.py)
+reuse validated substitutions across tasks. A substitution applies only when both
+the effective Python version and the original native package version match its
+profile entry. The current shared profile covers Python 3.9.20; unknown Python
+versions, native versions, and version ranges retain their original constraints.
+When relocking an existing ARM snapshot, profile selection uses its retained Python
+version. Task-specific overrides take precedence over a shared profile.
+
+Declare additional exceptions in `tasks/<instance_id>/native-versions.arm64.yml`:
 
 ```yaml
 libffi:
@@ -129,9 +140,12 @@ version string and a nonempty reason. These overrides apply when converting the
 x86 environment or running `--relock-native`; normal runs reuse the saved ARM64
 snapshot. The generator checks that the installed native versions match the
 requested pins. It does not silently remove constraints or automatically choose
-a nearest version. A failed solve requires inspecting the mirror and recording a
-compatible exception. Tasks without an x86 snapshot have no native reference
-versions to preserve; their first successful resolution is frozen as before.
+a nearest version. A failed solve outside the validated profiles requires
+inspecting the mirror and recording a compatible exception. `--refresh-lock`
+rebuilds an existing snapshot's constraints; `--relock-native` reapplies the native
+profiles and overrides before rebuilding. Tasks without an x86 snapshot have no
+native reference versions to preserve; their first successful resolution is frozen
+as before.
 
 The included ARM64 Astropy tasks have separately verified overrides. Other tasks
 may need their own exceptions. A single global runtime version would not fit both
@@ -170,6 +184,7 @@ benchmark tests.
 | `astropy__astropy-11693` | [Dockerfile](tasks/astropy__astropy-11693/Dockerfile) | Resolve/export/rebuild verified: 30 Conda build pins, 26 pip pins, Python 3.9.21; table/FITS smoke checks and 27 baseline PASS_TO_PASS tests passed with the warning filter below |
 | `astropy__astropy-13236` | [Dockerfile](tasks/astropy__astropy-13236/Dockerfile) | Resolve/export/rebuild verified: 31 Conda build pins, 26 pip pins, Python 3.9.23; table/FITS smoke checks passed; original table tests matched the previous image's results, including two existing failures |
 | `astropy__astropy-14309` | [Dockerfile](tasks/astropy__astropy-14309/Dockerfile) | Resolve/export/rebuild verified: 30 Conda build pins, 26 pip pins, Python 3.9.20; table/FITS smoke checks and all 141 baseline PASS_TO_PASS tests passed |
+| `django__django-15104` | [Dockerfile](tasks/django__django-15104/Dockerfile) | Resolve/export/rebuild verified: 31 Conda build pins, 57 pip pins, Python 3.9.20; database/import smoke checks and all 138 original migration-autodetector tests passed |
 
 Astropy 11693's unmodified offline baseline run passed 26 tests and failed one
 because the bundled leap-second data is expired. All 27 passed when rerun with
@@ -245,10 +260,11 @@ completed. Shared files such as
 
 Run focused tests with `python -m unittest discover -s tests -v`.
 
-On 2026-10-28, all 28 focused tests passed, including exact native constraints,
-override validation, preservation of ARM application versions during relocking,
-and rejection of native version drift. Ruff checks passed. All 2,519 tasks
-generated in draft mode with the stricter native policy; all archived x86
+On 2026-10-28, all 32 focused tests passed, including exact native constraints,
+profile version matching, override precedence, preservation of ARM application
+versions during relocking, rejection of native version drift, and retention of
+native packages hidden by same-named Python packages. Ruff checks passed. All 2,519
+tasks generated in draft mode with the shared native profiles; all archived x86
 Dockerfiles matched their source files byte-for-byte. Draft generation does not
 establish that a task's dependencies can resolve on ARM64.
 
@@ -273,6 +289,19 @@ Dockerfile matched the verified build input, its x86 archive matched the origina
 byte-for-byte, and repeat generation left the files unchanged. Reports are in
 `logs/arm64/astropy__astropy-14309/`; the original failed build is preserved as
 `failed-before-native-pins.log` there.
+
+Django 15104 uses the shared Python 3.9.20 native profile without a task-specific
+override file. Its complete resolve/export/rebuild pipeline passed with matching
+Conda/pip pins and all 60 third-party Python distribution versions, retaining the
+original Python, pip, setuptools, wheel, and pip-package versions. The freezer
+pins both native `tzdata=2026e` and Python `tzdata==2024.2`; Conda's export alone
+omits the native package. All 138 tests in the original
+`migrations.test_autodetector` module passed offline in both images. The module
+was run because some upstream PASS_TO_PASS entries are descriptions rather than
+runnable names. Database and native-package import checks passed in the rebuilt
+image. Reports and the preserved original failure are in
+`logs/arm64/django__django-15104/`. All five saved ARM64 tasks regenerated without
+changing their snapshots, Dockerfiles, or x86 archives.
 
 Other tasks may need native overrides before they can build. The full benchmark,
 including evaluation with the task's test and solution patches, has not been run.

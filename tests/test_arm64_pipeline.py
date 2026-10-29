@@ -95,6 +95,30 @@ class Arm64PipelineTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     pipeline.frozen_environment(report, arm64.DEFAULT_MIRROR, "base123")
 
+    def test_export_keeps_native_package_hidden_by_same_named_python_package(self):
+        report = resolved_report()
+        report["conda_records"]["tzdata"] = {
+            "name": "tzdata",
+            "version": "2026e",
+            "build": "data_build",
+            "subdir": "noarch",
+            "url": f"https://{arm64.DEFAULT_MIRROR}/artifactory/conda-forge/noarch/tzdata.conda",
+        }
+        report["environment"]["dependencies"][-1]["pip"].append("tzdata==2024.2")
+        report["python_distributions"]["tzdata"] = "2024.2"
+        frozen = pipeline.frozen_environment(report, arm64.DEFAULT_MIRROR, "base123")
+        self.assertIn("tzdata=2026e=data_build", frozen)
+        self.assertIn("tzdata==2024.2", frozen)
+        self.assertNotIn("setuptools=80.9.0", frozen)
+        for change in (
+            {"subdir": "linux-64"},
+            {"url": "https://other.org/tzdata.conda"},
+        ):
+            changed = copy.deepcopy(report)
+            changed["conda_records"]["tzdata"].update(change)
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                pipeline.frozen_environment(changed, arm64.DEFAULT_MIRROR, "base123")
+
     def test_pipeline_rebuilds_from_export_and_removes_only_its_temporary_tags(self):
         with tempfile.TemporaryDirectory() as directory:
             task = Path(directory) / "task-1"

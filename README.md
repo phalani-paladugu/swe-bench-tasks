@@ -29,9 +29,10 @@ exact Conda and pip versions, and verifies a rebuild before saving the Dockerfil
 and `environment.arm64.yml`. Existing pinned snapshots are reused. Add `--draft`
 to generate without building, or `--all` to process all tasks. See
 [ARM64.md](ARM64.md) for the pipeline, conversion rules, and build instructions.
-Native runtime versions follow the x86 snapshot, with documented exceptions in
-each task's `native-versions.arm64.yml`. Use `--relock-native` to apply those
-constraints to an existing ARM64 snapshot while retaining its Python/pip versions.
+Native runtime versions follow the x86 snapshot, with compatible substitutions
+from matching shared profiles and each task's `native-versions.arm64.yml`.
+Use `--relock-native` to apply those constraints to an existing ARM64 snapshot
+while retaining its Python/pip versions.
 
 ## Install
 

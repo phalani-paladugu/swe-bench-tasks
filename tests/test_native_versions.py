@@ -7,6 +7,7 @@ import yaml
 
 from dockerfile_gen import arm64
 from dockerfile_gen import arm64_pipeline as pipeline
+from dockerfile_gen.native_profiles import native_profile
 
 
 SOURCE = """dependencies:
@@ -29,6 +30,43 @@ ARM = """dependencies:
 
 
 class NativeVersionTests(unittest.TestCase):
+    def test_shared_profile_requires_matching_python_and_source_versions(self):
+        source = yaml.safe_load(SOURCE)
+        profile = native_profile(source)
+        self.assertEqual(set(profile), {"libffi"})
+        self.assertEqual(profile["libffi"]["version"], "3.4.6")
+        self.assertIn("Python 3.9.20 profile", profile["libffi"]["reason"])
+        for changed in (
+            SOURCE.replace("python=3.9.20", "python=3.9.21"),
+            SOURCE.replace("python=3.9.20=x86_build", "python=3.9"),
+            SOURCE.replace("libffi=3.4.4", "libffi=3.3"),
+            SOURCE.replace("libffi=3.4.4=x86_build", "libffi>=3.4"),
+        ):
+            with self.subTest(source=changed):
+                self.assertEqual(native_profile(yaml.safe_load(changed)), {})
+
+    def test_shared_profile_uses_effective_arm_python_when_relocking(self):
+        with tempfile.TemporaryDirectory() as directory:
+            task = Path(directory)
+            (task / "environment.yml").write_text(SOURCE)
+            self.assertEqual(
+                arm64.load_native_versions(task)["libffi"]["version"], "3.4.6"
+            )
+            self.assertEqual(arm64.load_native_versions(task, ARM), {})
+            result = yaml.safe_load(arm64.relock_native_environment(task, ARM))
+            self.assertIn("python==3.9.23", result["dependencies"])
+            self.assertIn("libffi==3.4.4", result["dependencies"])
+
+    def test_task_overrides_take_precedence_over_shared_profile(self):
+        with tempfile.TemporaryDirectory() as directory:
+            task = self.make_task(directory)
+            override = {
+                "libffi": {"version": "3.7.0", "reason": "Task-specific constraint."}
+            }
+            (task / "native-versions.arm64.yml").write_text(yaml.safe_dump(override))
+            self.assertEqual(arm64.load_native_versions(task), override)
+            self.assertEqual(arm64.load_native_versions(task, ARM), override)
+
     def make_task(self, directory):
         task = Path(directory)
         (task / "environment.yml").write_text(SOURCE)

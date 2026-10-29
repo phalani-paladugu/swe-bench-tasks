@@ -12,6 +12,7 @@ import yaml
 
 from . import get_environment_yml, make_env_script_list, make_repo_script_list
 from .constants import MAP_REPO_VERSION_TO_SPECS
+from .native_profiles import native_profile
 from .tasks import task_dirs
 from .utils import generate_heredoc_delimiter, make_heredoc_run_command
 
@@ -156,14 +157,21 @@ def arm_environment(
     )
 
 
-def load_native_versions(task_dir: Path) -> dict:
+def load_native_versions(task_dir: Path, environment: str | None = None) -> dict:
+    """Combine a matching shared profile with task-specific native overrides."""
+    source = task_dir / "environment.yml"
+    reference = (
+        yaml.safe_load(source.read_text()) if source.is_file() else {"dependencies": []}
+    )
+    versions = native_profile(
+        reference, yaml.safe_load(environment) if environment is not None else None
+    )
     path = task_dir / "native-versions.arm64.yml"
-    if not path.is_file():
-        return {}
-    versions = yaml.safe_load(path.read_text())
-    if not isinstance(versions, dict):
-        raise ValueError(f"{path}: expected package names mapped to version/reason")
-    reference = yaml.safe_load((task_dir / "environment.yml").read_text())
+    if path.is_file():
+        overrides = yaml.safe_load(path.read_text())
+        if not isinstance(overrides, dict):
+            raise ValueError(f"{path}: expected package names mapped to version/reason")
+        versions.update(overrides)
     names = {
         re.split(r"[=<>!~ ]", pin.split("::")[-1])[0].replace(
             "ld_impl_linux-64", "ld_impl_linux-aarch64"
@@ -190,7 +198,9 @@ def relock_native_environment(task_dir: Path, environment: str | None = None) ->
     """Rebase native requirements on x86 while preserving ARM application versions."""
     source = (task_dir / "environment.yml").read_text()
     converted = yaml.safe_load(
-        arm_environment(source, native_versions=load_native_versions(task_dir))
+        arm_environment(
+            source, native_versions=load_native_versions(task_dir, environment)
+        )
     )
     if environment is None:
         return yaml.safe_dump(converted, sort_keys=False)
@@ -336,7 +346,7 @@ def main() -> None:
     mode.add_argument(
         "--relock-native",
         action="store_true",
-        help="Align native versions with x86 and task overrides, retaining ARM application versions",
+        help="Apply compatible native profiles and task overrides, retaining ARM application versions",
     )
     parser.add_argument("--logs-dir", type=Path, default=Path("logs/arm64"))
     parser.add_argument(

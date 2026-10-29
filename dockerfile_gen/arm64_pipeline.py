@@ -49,29 +49,36 @@ def frozen_environment(report: dict, mirror_host: str, base_commit: str) -> str:
         raise ValueError(
             "Cannot identify the installed /testbed project to exclude from pins"
         )
-    conda, pip = [], []
+
+    def conda_pin(name):
+        record = report["conda_records"][name]
+        if record["subdir"] not in {"linux-aarch64", "noarch"}:
+            raise ValueError(f"Non-ARM64 Conda package: {name}")
+        if not (record["url"] or "").startswith(f"https://{mirror_host}/artifactory/"):
+            raise ValueError(
+                f"Conda package did not come from the internal mirror: {name}"
+            )
+        return f"{name}={record['version']}={record['build']}"
+
+    conda, pip = {}, []
     # Use Conda's export, not all conda-meta records: pip may have replaced a package.
     for dependency in report["environment"]["dependencies"]:
         if isinstance(dependency, str):
             name = dependency.split("::")[-1].split("=")[0]
             if name in local:
                 continue
-            record = report["conda_records"][name]
-            if record["subdir"] not in {"linux-aarch64", "noarch"}:
-                raise ValueError(f"Non-ARM64 Conda package: {name}")
-            if not (record["url"] or "").startswith(
-                f"https://{mirror_host}/artifactory/"
-            ):
-                raise ValueError(
-                    f"Conda package did not come from the internal mirror: {name}"
-                )
-            conda.append(f"{name}={record['version']}={record['build']}")
+            conda[name] = conda_pin(name)
         else:
             for pin in dependency["pip"]:
                 name = re.sub(r"[-_.]+", "-", re.split(r"[= @]", pin)[0]).lower()
                 if name not in local:
                     pip.append(pin)
-    dependencies = sorted(conda)
+    # Native files remain installed when a distinct PyPI package shares their name
+    # (e.g. tzdata). Conda's export hides these; preserve both sets of pins.
+    for name in (report["conda_records"].keys() & NATIVE_RUNTIME) - local:
+        if name not in conda:
+            conda[name] = conda_pin(name)
+    dependencies = sorted(conda.values())
     if pip:
         dependencies.append({"pip": sorted(pip)})
     frozen = arm_environment(
@@ -158,14 +165,12 @@ def check_native_versions(task_dir: Path, environment: str | None, frozen: str) 
     """Check requested native pins and explain version differences from x86."""
     source = task_dir / "environment.yml"
     x86 = source.read_text() if source.is_file() else "dependencies: []"
-    overrides = load_native_versions(task_dir)
     if environment is None:
         saved = task_dir / "environment.arm64.yml"
-        environment = (
-            saved.read_text()
-            if saved.is_file()
-            else arm_environment(x86, native_versions=overrides)
-        )
+        environment = saved.read_text() if saved.is_file() else None
+    overrides = load_native_versions(task_dir, environment)
+    if environment is None:
+        environment = arm_environment(x86, native_versions=overrides)
 
     def versions(text):
         result = {}
