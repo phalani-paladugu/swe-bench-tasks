@@ -4,11 +4,28 @@ FROM --platform=linux/arm64 ubuntu:22.04
 ARG DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
 
-RUN apt update && apt install -y wget git build-essential libffi-dev libtiff-dev python3 python3-pip python-is-python3 jq curl ca-certificates bzip2 locales locales-all tzdata && rm -rf /var/lib/apt/lists/*
+RUN apt update && apt install -y \
+wget \
+git \
+build-essential \
+libffi-dev \
+libtiff-dev \
+python3 \
+python3-pip \
+python-is-python3 \
+jq \
+curl \
+ca-certificates \
+bzip2 \
+locales \
+locales-all \
+tzdata \
+&& rm -rf /var/lib/apt/lists/*
 
 # Install Conda from the internal mirror.
 ARG ARTIFACTORY_HOST=us-west-2.artifactory.aws.arm.com
 ENV CONDARC=/etc/conda/condarc
+
 RUN <<'BOOTSTRAP_CONDA'
 set -eu
 mkdir -p /etc/conda /tmp/swebench-micromamba
@@ -19,46 +36,59 @@ default_channels:
 channels:
   - defaults
 CONDARC_CONFIG
-curl -fSL --retry 3 "https://${ARTIFACTORY_HOST}/artifactory/conda-forge/linux-aarch64/micromamba-2.1.0-0.tar.bz2" -o /tmp/swebench-micromamba/micromamba.tar.bz2
-tar -xjf /tmp/swebench-micromamba/micromamba.tar.bz2 -C /tmp/swebench-micromamba bin/micromamba
-/tmp/swebench-micromamba/bin/micromamba --rc-file /etc/conda/condarc create -y -p /opt/miniconda3 --override-channels -c conda-forge mamba conda
+
+curl -fSL --retry 3 \
+    "https://${ARTIFACTORY_HOST}/artifactory/conda-forge/linux-aarch64/micromamba-2.1.0-0.tar.bz2" \
+    -o /tmp/swebench-micromamba/micromamba.tar.bz2
+tar -xjf /tmp/swebench-micromamba/micromamba.tar.bz2 \
+    -C /tmp/swebench-micromamba bin/micromamba
+/tmp/swebench-micromamba/bin/micromamba \
+    --rc-file /etc/conda/condarc create -y \
+    -p /opt/miniconda3 \
+    --override-channels -c conda-forge \
+    mamba \
+    conda
 rm -rf /tmp/swebench-micromamba
 BOOTSTRAP_CONDA
+
+# Add conda to PATH
 ENV PATH=/opt/miniconda3/bin:$PATH
+# Add conda to shell startup scripts like .bashrc (DO NOT REMOVE THIS)
 RUN conda init --all
+
 RUN adduser --disabled-password --gecos 'dog' nonroot
 
-RUN <<EOF_f6e1c4d70c34
+RUN <<EOF_e644b00fca1b
 #!/bin/bash
 set -euxo pipefail
 source /opt/miniconda3/bin/activate
-cat > /root/environment.yml <<'EOF_559e331f90d1'
+cat > /root/environment.yml <<'EOF_5426481f67df'
 name: testbed
 channels:
-- conda-forge
+  - conda-forge
 dependencies:
-- _openmp_mutex=4.5=20_gnu
-- ca-certificates=2024.8.30=hcefe29a_0
-- certifi=2021.5.30=py36h704843e_0
-- ld_impl_linux-aarch64=2.40=h9fc2d93_7
-- libffi=3.3=h884eca8_2
-- libgcc-ng=12.1.0=h3242a24_17
-- libgomp=12.1.0=h3242a24_17
-- libsqlite=3.45.3=h194ca79_0
-- libstdcxx-ng=12.1.0=hd01590b_17
-- libzlib=1.2.13=h68df207_6
-- ncurses=6.4.20240210=h0425590_0
-- openssl=1.1.1w=h31becfc_0
-- pip=21.2.2=pyhd8ed1ab_0
-- python=3.6.13=h468538b_0_cpython
-- python_abi=3.6=2_cp36m
-- readline=8.2=h8fc344f_1
-- sqlite=3.45.3=h3b3482f_0
-- tk=8.6.13=h194ca79_0
-- wheel=0.37.1=pyhd8ed1ab_0
-- xz=5.2.6=h9cdd2b7_0
-- zlib=1.2.13=h68df207_6
-EOF_559e331f90d1
+  - _openmp_mutex=4.5=20_gnu
+  - ca-certificates=2024.8.30=hcefe29a_0
+  - certifi=2021.5.30=py36h704843e_0
+  - ld_impl_linux-aarch64=2.40=h9fc2d93_7
+  - libffi=3.3=h884eca8_2
+  - libgcc-ng=12.1.0=h3242a24_17
+  - libgomp=12.1.0=h3242a24_17
+  - libsqlite=3.45.3=h194ca79_0
+  - libstdcxx-ng=12.1.0=hd01590b_17
+  - libzlib=1.2.13=h68df207_6
+  - ncurses=6.4.20240210=h0425590_0
+  - openssl=1.1.1w=h31becfc_0
+  - pip=21.2.2=pyhd8ed1ab_0
+  - python=3.6.13=h468538b_0_cpython
+  - python_abi=3.6=2_cp36m
+  - readline=8.2=h8fc344f_1
+  - sqlite=3.45.3=h3b3482f_0
+  - tk=8.6.13=h194ca79_0
+  - wheel=0.37.1=pyhd8ed1ab_0
+  - xz=5.2.6=h9cdd2b7_0
+  - zlib=1.2.13=h68df207_6
+EOF_5426481f67df
 conda env create --file /root/environment.yml
 conda activate testbed
 python -m pip install setuptools==38.2.4
@@ -106,7 +136,7 @@ trio==0.8.0
 typing-extensions==4.1.1
 EOF_146107461d2e
 python -m pip install -r /root/requirements.txt
-EOF_f6e1c4d70c34
+EOF_e644b00fca1b
 
 RUN echo "source /opt/miniconda3/etc/profile.d/conda.sh && conda activate testbed" > /root/.bashrc
 

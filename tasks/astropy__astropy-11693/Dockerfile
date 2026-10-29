@@ -4,11 +4,28 @@ FROM --platform=linux/arm64 ubuntu:22.04
 ARG DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
 
-RUN apt update && apt install -y wget git build-essential libffi-dev libtiff-dev python3 python3-pip python-is-python3 jq curl ca-certificates bzip2 locales locales-all tzdata && rm -rf /var/lib/apt/lists/*
+RUN apt update && apt install -y \
+wget \
+git \
+build-essential \
+libffi-dev \
+libtiff-dev \
+python3 \
+python3-pip \
+python-is-python3 \
+jq \
+curl \
+ca-certificates \
+bzip2 \
+locales \
+locales-all \
+tzdata \
+&& rm -rf /var/lib/apt/lists/*
 
 # Install Conda from the internal mirror.
 ARG ARTIFACTORY_HOST=us-west-2.artifactory.aws.arm.com
 ENV CONDARC=/etc/conda/condarc
+
 RUN <<'BOOTSTRAP_CONDA'
 set -eu
 mkdir -p /etc/conda /tmp/swebench-micromamba
@@ -19,84 +36,97 @@ default_channels:
 channels:
   - defaults
 CONDARC_CONFIG
-curl -fSL --retry 3 "https://${ARTIFACTORY_HOST}/artifactory/conda-forge/linux-aarch64/micromamba-2.1.0-0.tar.bz2" -o /tmp/swebench-micromamba/micromamba.tar.bz2
-tar -xjf /tmp/swebench-micromamba/micromamba.tar.bz2 -C /tmp/swebench-micromamba bin/micromamba
-/tmp/swebench-micromamba/bin/micromamba --rc-file /etc/conda/condarc create -y -p /opt/miniconda3 --override-channels -c conda-forge mamba conda
+
+curl -fSL --retry 3 \
+    "https://${ARTIFACTORY_HOST}/artifactory/conda-forge/linux-aarch64/micromamba-2.1.0-0.tar.bz2" \
+    -o /tmp/swebench-micromamba/micromamba.tar.bz2
+tar -xjf /tmp/swebench-micromamba/micromamba.tar.bz2 \
+    -C /tmp/swebench-micromamba bin/micromamba
+/tmp/swebench-micromamba/bin/micromamba \
+    --rc-file /etc/conda/condarc create -y \
+    -p /opt/miniconda3 \
+    --override-channels -c conda-forge \
+    mamba \
+    conda
 rm -rf /tmp/swebench-micromamba
 BOOTSTRAP_CONDA
+
+# Add conda to PATH
 ENV PATH=/opt/miniconda3/bin:$PATH
+# Add conda to shell startup scripts like .bashrc (DO NOT REMOVE THIS)
 RUN conda init --all
+
 RUN adduser --disabled-password --gecos 'dog' nonroot
 
-RUN <<EOF_4b0f38359cb6
+RUN <<EOF_7ca77a573836
 #!/bin/bash
 set -euxo pipefail
 source /opt/miniconda3/bin/activate
-cat > /root/environment.yml <<'EOF_210b773e10cf'
+cat > /root/environment.yml <<'EOF_20897a303ef0'
 name: testbed
 channels:
-- conda-forge
+  - conda-forge
 dependencies:
-- _openmp_mutex=4.5=20_gnu
-- bzip2=1.0.8=h68df207_7
-- ca-certificates=2024.12.14=hcefe29a_0
-- ld_impl_linux-aarch64=2.40=h9fc2d93_7
-- libffi=3.4.6=he21f813_1
-- libgcc-ng=13.3.0=he9431aa_2
-- libgcc=13.3.0=he277a41_2
-- libgomp=13.3.0=he277a41_2
-- liblzma-devel=5.6.4=h86ecc28_0
-- liblzma=5.6.4=h86ecc28_0
-- libnsl=2.0.1=h86ecc28_1
-- libsqlite=3.47.0=hc4a20ef_1
-- libstdcxx-ng=13.3.0=hf1166c9_2
-- libstdcxx=13.3.0=h3f4de04_2
-- libuuid=2.38.1=hb4cce97_0
-- libxcrypt=4.4.36=h31becfc_1
-- libzlib=1.3.1=h86ecc28_2
-- ncurses=6.5=ha32ae93_3
-- openssl=3.4.0=hd08dc88_1
-- pip=25.0.1=pyh8b19718_0
-- python=3.9.21=hb97c71e_1_cpython
-- readline=8.2=h8382b9d_2
-- sqlite=3.47.0=h578a6b9_1
-- tk=8.6.13=noxft_h561c983_103
-- tzdata=2025a=h78e105d_0
-- wheel=0.45.1=pyhd8ed1ab_1
-- xz-gpl-tools=5.6.4=h2dbfc1b_0
-- xz-tools=5.6.4=h86ecc28_0
-- xz=5.6.4=h2dbfc1b_0
-- zlib=1.3.1=h86ecc28_2
-- pip:
-  - attrs==23.1.0
-  - coverage==7.6.12
-  - exceptiongroup==1.1.3
-  - execnet==2.0.2
-  - hypothesis==6.82.6
-  - iniconfig==2.0.0
-  - numpy==1.25.2
-  - packaging==23.1
-  - pluggy==1.3.0
-  - psutil==5.9.5
-  - pyerfa==2.0.0.3
-  - pytest-arraydiff==0.5.0
-  - pytest-astropy-header==0.2.2
-  - pytest-astropy==0.10.0
-  - pytest-cov==4.1.0
-  - pytest-doctestplus==1.0.0
-  - pytest-filter-subpackage==0.1.2
-  - pytest-mock==3.11.1
-  - pytest-openfiles==0.5.0
-  - pytest-remotedata==0.4.0
-  - pytest-xdist==3.3.1
-  - pytest==7.4.0
-  - pyyaml==6.0.1
-  - setuptools==68.0.0
-  - sortedcontainers==2.4.0
-  - tomli==2.0.1
-EOF_210b773e10cf
+  - _openmp_mutex=4.5=20_gnu
+  - bzip2=1.0.8=h68df207_7
+  - ca-certificates=2024.12.14=hcefe29a_0
+  - ld_impl_linux-aarch64=2.40=h9fc2d93_7
+  - libffi=3.4.6=he21f813_1
+  - libgcc-ng=13.3.0=he9431aa_2
+  - libgcc=13.3.0=he277a41_2
+  - libgomp=13.3.0=he277a41_2
+  - liblzma-devel=5.6.4=h86ecc28_0
+  - liblzma=5.6.4=h86ecc28_0
+  - libnsl=2.0.1=h86ecc28_1
+  - libsqlite=3.47.0=hc4a20ef_1
+  - libstdcxx-ng=13.3.0=hf1166c9_2
+  - libstdcxx=13.3.0=h3f4de04_2
+  - libuuid=2.38.1=hb4cce97_0
+  - libxcrypt=4.4.36=h31becfc_1
+  - libzlib=1.3.1=h86ecc28_2
+  - ncurses=6.5=ha32ae93_3
+  - openssl=3.4.0=hd08dc88_1
+  - pip=25.0.1=pyh8b19718_0
+  - python=3.9.21=hb97c71e_1_cpython
+  - readline=8.2=h8382b9d_2
+  - sqlite=3.47.0=h578a6b9_1
+  - tk=8.6.13=noxft_h561c983_103
+  - tzdata=2025a=h78e105d_0
+  - wheel=0.45.1=pyhd8ed1ab_1
+  - xz-gpl-tools=5.6.4=h2dbfc1b_0
+  - xz-tools=5.6.4=h86ecc28_0
+  - xz=5.6.4=h2dbfc1b_0
+  - zlib=1.3.1=h86ecc28_2
+  - pip:
+      - attrs==23.1.0
+      - coverage==7.6.12
+      - exceptiongroup==1.1.3
+      - execnet==2.0.2
+      - hypothesis==6.82.6
+      - iniconfig==2.0.0
+      - numpy==1.25.2
+      - packaging==23.1
+      - pluggy==1.3.0
+      - psutil==5.9.5
+      - pyerfa==2.0.0.3
+      - pytest-arraydiff==0.5.0
+      - pytest-astropy-header==0.2.2
+      - pytest-astropy==0.10.0
+      - pytest-cov==4.1.0
+      - pytest-doctestplus==1.0.0
+      - pytest-filter-subpackage==0.1.2
+      - pytest-mock==3.11.1
+      - pytest-openfiles==0.5.0
+      - pytest-remotedata==0.4.0
+      - pytest-xdist==3.3.1
+      - pytest==7.4.0
+      - pyyaml==6.0.1
+      - setuptools==68.0.0
+      - sortedcontainers==2.4.0
+      - tomli==2.0.1
+EOF_20897a303ef0
 conda env create --file /root/environment.yml
-EOF_4b0f38359cb6
+EOF_7ca77a573836
 
 RUN echo "source /opt/miniconda3/etc/profile.d/conda.sh && conda activate testbed" > /root/.bashrc
 

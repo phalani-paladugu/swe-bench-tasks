@@ -4,6 +4,9 @@ Generated ARM64 Dockerfiles live at `tasks/<instance_id>/Dockerfile`. The origin
 x86 file is saved as `Dockerfile.amd` before replacement. Each ARM64 file is
 standalone and contains system packages, Conda setup, task dependencies,
 repository checkout, and installation.
+The generator follows the AMD Dockerfiles' layout: one apt package per line,
+indented Conda and pip lists, and line continuations for long bootstrap commands.
+These formatting choices do not change the saved dependency pins.
 
 ## Generate Dockerfiles
 

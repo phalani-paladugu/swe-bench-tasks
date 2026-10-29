@@ -42,6 +42,13 @@ blas blas-devel libblas libcblas liblapack liblapacke openblas libopenblas""".sp
 CONDA_TO_PIP = {"setuptools=38.2.4": "setuptools==38.2.4"}
 
 
+class IndentedSafeDumper(yaml.SafeDumper):
+    """Indent embedded Conda lists like the original AMD Dockerfiles."""
+
+    def increase_indent(self, flow=False, indentless=False):
+        return super().increase_indent(flow, indentless=False)
+
+
 def write_base_image() -> str:
     return """# syntax=docker/dockerfile:1
 FROM --platform=linux/arm64 ubuntu:22.04
@@ -52,9 +59,10 @@ ENV TZ=Etc/UTC
 
 
 def write_system_dependencies() -> str:
-    packages = " ".join(SYSTEM_PACKAGES)
+    packages = " \\\n".join(SYSTEM_PACKAGES)
     return (
-        f"RUN apt update && apt install -y {packages} && rm -rf /var/lib/apt/lists/*\n"
+        f"RUN apt update && apt install -y \\\n{packages} \\\n"
+        "&& rm -rf /var/lib/apt/lists/*\n"
     )
 
 
@@ -64,6 +72,7 @@ def write_conda(mirror_host: str = DEFAULT_MIRROR) -> str:
     return f"""# Install Conda from the internal mirror.
 ARG ARTIFACTORY_HOST={mirror_host}
 ENV CONDARC=/etc/conda/condarc
+
 RUN <<'BOOTSTRAP_CONDA'
 set -eu
 mkdir -p /etc/conda /tmp/swebench-micromamba
@@ -74,13 +83,26 @@ default_channels:
 channels:
   - defaults
 CONDARC_CONFIG
-curl -fSL --retry 3 "https://${{ARTIFACTORY_HOST}}/artifactory/conda-forge/linux-aarch64/micromamba-2.1.0-0.tar.bz2" -o /tmp/swebench-micromamba/micromamba.tar.bz2
-tar -xjf /tmp/swebench-micromamba/micromamba.tar.bz2 -C /tmp/swebench-micromamba bin/micromamba
-/tmp/swebench-micromamba/bin/micromamba --rc-file /etc/conda/condarc create -y -p /opt/miniconda3 --override-channels -c conda-forge mamba conda
+
+curl -fSL --retry 3 \\
+    "https://${{ARTIFACTORY_HOST}}/artifactory/conda-forge/linux-aarch64/micromamba-2.1.0-0.tar.bz2" \\
+    -o /tmp/swebench-micromamba/micromamba.tar.bz2
+tar -xjf /tmp/swebench-micromamba/micromamba.tar.bz2 \\
+    -C /tmp/swebench-micromamba bin/micromamba
+/tmp/swebench-micromamba/bin/micromamba \\
+    --rc-file /etc/conda/condarc create -y \\
+    -p /opt/miniconda3 \\
+    --override-channels -c conda-forge \\
+    mamba \\
+    conda
 rm -rf /tmp/swebench-micromamba
 BOOTSTRAP_CONDA
+
+# Add conda to PATH
 ENV PATH=/opt/miniconda3/bin:$PATH
+# Add conda to shell startup scripts like .bashrc (DO NOT REMOVE THIS)
 RUN conda init --all
+
 RUN adduser --disabled-password --gecos 'dog' nonroot
 """
 
@@ -256,7 +278,7 @@ def write_dependencies(
         parsed["dependencies"] = [
             d for d in parsed["dependencies"] if isinstance(d, str)
         ]
-        text = yaml.safe_dump(parsed, sort_keys=False)
+    text = yaml.dump(parsed, Dumper=IndentedSafeDumper, sort_keys=False)
     delimiter = generate_heredoc_delimiter(text)
     commands = [
         "source /opt/miniconda3/bin/activate",
