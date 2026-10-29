@@ -133,7 +133,7 @@ a nearest version. A failed solve requires inspecting the mirror and recording a
 compatible exception. Tasks without an x86 snapshot have no native reference
 versions to preserve; their first successful resolution is frozen as before.
 
-The three included Astropy tasks have separately verified overrides. Other tasks
+The included ARM64 Astropy tasks have separately verified overrides. Other tasks
 may need their own exceptions. A single global runtime version would not fit both
 legacy Python 3.6 and newer Python 3.9 builds.
 
@@ -169,6 +169,7 @@ benchmark tests.
 | `astropy__astropy-6938` | [Dockerfile](tasks/astropy__astropy-6938/Dockerfile) | Resolve/export/rebuild verified: 21 Conda build pins, 41 pip pins, Python 3.6.13; table/FITS smoke checks and all 11 baseline PASS_TO_PASS tests passed |
 | `astropy__astropy-11693` | [Dockerfile](tasks/astropy__astropy-11693/Dockerfile) | Resolve/export/rebuild verified: 30 Conda build pins, 26 pip pins, Python 3.9.21; table/FITS smoke checks and 27 baseline PASS_TO_PASS tests passed with the warning filter below |
 | `astropy__astropy-13236` | [Dockerfile](tasks/astropy__astropy-13236/Dockerfile) | Resolve/export/rebuild verified: 31 Conda build pins, 26 pip pins, Python 3.9.23; table/FITS smoke checks passed; original table tests matched the previous image's results, including two existing failures |
+| `astropy__astropy-14309` | [Dockerfile](tasks/astropy__astropy-14309/Dockerfile) | Resolve/export/rebuild verified: 30 Conda build pins, 26 pip pins, Python 3.9.20; table/FITS smoke checks and all 141 baseline PASS_TO_PASS tests passed |
 
 Astropy 11693's unmodified offline baseline run passed 26 tests and failed one
 because the bundled leap-second data is expired. All 27 passed when rerun with
@@ -251,7 +252,7 @@ generated in draft mode with the stricter native policy; all archived x86
 Dockerfiles matched their source files byte-for-byte. Draft generation does not
 establish that a task's dependencies can resolve on ARM64.
 
-All three included tasks passed the complete resolve/export/rebuild pipeline,
+Astropy 6938, 11693, and 13236 passed the complete resolve/export/rebuild pipeline,
 native-pin comparison, and offline table/FITS smoke checks. Their Python versions
 and previous third-party Python distribution versions were retained: 44 for
 Astropy 6938, 28 for 11693, and 28 for 13236. Saved Dockerfiles matched the verified
@@ -259,6 +260,19 @@ build inputs, x86 archives were unchanged, and repeat generation reused the
 verified snapshots without changing the files. Reports for this validation run
 are in `logs/arm64/native-pins/<instance_id>/` (ignored by Git).
 See the table above for baseline test results and their limitations.
+
+Astropy 14309 initially failed to resolve exact x86 native versions. Its
+`native-versions.arm64.yml` now records compatible alternatives, including
+OpenSSL 3.3.2, SQLite 3.46.1, and GCC runtimes 13.3.0 for ARM64 Python 3.9.20.
+The complete resolve/export/rebuild pipeline passed, retaining the x86 Python,
+pip, wheel, and pip-package versions. Both images matched all 30 Conda build pins,
+26 pip pins, and 28 third-party Python distribution versions. Offline table/FITS
+smoke checks and all 141 baseline PASS_TO_PASS tests passed. Pytest startup emitted
+a NumPy ndarray-size `RuntimeWarning`; no selected test failed. The saved
+Dockerfile matched the verified build input, its x86 archive matched the original
+byte-for-byte, and repeat generation left the files unchanged. Reports are in
+`logs/arm64/astropy__astropy-14309/`; the original failed build is preserved as
+`failed-before-native-pins.log` there.
 
 Other tasks may need native overrides before they can build. The full benchmark,
 including evaluation with the task's test and solution patches, has not been run.
