@@ -1,0 +1,24 @@
+_openmp_mutex:
+  version: '4.5'
+  reason: conda-forge provides 4.5; the defaults-channel version 5.1 is unavailable.
+tk:
+  version: 8.6.13
+  reason: 8.6.14 is unavailable; retain the 8.6 series with 8.6.13.
+ca-certificates:
+  version: 2024.8.30
+  reason: Nearby earlier conda-forge release; the exact x86 certificate-bundle version is unavailable.
+libgcc-ng:
+  version: 12.1.0
+  reason: OpenSSL/readline require GCC >=12; keep the GCC runtime packages on 12.1.0.
+libgomp:
+  version: 12.1.0
+  reason: OpenSSL/readline require GCC >=12; keep the GCC runtime packages on 12.1.0.
+libstdcxx-ng:
+  version: 12.1.0
+  reason: OpenSSL/readline require GCC >=12; keep the GCC runtime packages on 12.1.0.
+xz:
+  version: 5.2.6
+  reason: 5.4.6 is unavailable; use nearby 5.2.6 with the GCC 12 runtime.
+ncurses:
+  version: 6.4.20240210
+  reason: Minimum ncurses version required by the selected ARM64 Python/SQLite builds.

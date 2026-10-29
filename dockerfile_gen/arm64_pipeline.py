@@ -9,7 +9,7 @@ from pathlib import Path
 
 import yaml
 
-from .arm64 import arm_environment, generate
+from .arm64 import NATIVE_RUNTIME, arm_environment, generate, load_native_versions
 
 
 def is_fully_pinned(text: str) -> bool:
@@ -154,6 +154,56 @@ def third_party(report: dict) -> dict:
     }
 
 
+def check_native_versions(task_dir: Path, environment: str | None, frozen: str) -> list:
+    """Check requested native pins and explain version differences from x86."""
+    source = task_dir / "environment.yml"
+    x86 = source.read_text() if source.is_file() else "dependencies: []"
+    overrides = load_native_versions(task_dir)
+    if environment is None:
+        saved = task_dir / "environment.arm64.yml"
+        environment = (
+            saved.read_text()
+            if saved.is_file()
+            else arm_environment(x86, native_versions=overrides)
+        )
+
+    def versions(text):
+        result = {}
+        for pin in yaml.safe_load(text)["dependencies"]:
+            if isinstance(pin, str):
+                match = re.fullmatch(
+                    r"([\w.-]+)={1,2}([\w.!+-]+)(?:=([\w.+-]+))?", pin.split("::")[-1]
+                )
+                if match:
+                    name = match[1].replace("ld_impl_linux-64", "ld_impl_linux-aarch64")
+                    if name in NATIVE_RUNTIME:
+                        result[name] = match[2]
+        return result
+
+    original, requested, installed = (
+        versions(x86),
+        versions(environment),
+        versions(frozen),
+    )
+    for name, version in requested.items():
+        if installed.get(name) != version:
+            raise ValueError(
+                f"Native pin changed for {name}: requested {version}, installed {installed.get(name)}"
+            )
+    return [
+        {
+            "package": name,
+            "x86_version": original.get(name),
+            "requested_version": requested.get(name),
+            "arm64_version": installed[name],
+            "reason": overrides.get(name, {}).get("reason")
+            if overrides.get(name, {}).get("version") == installed[name]
+            else None,
+        }
+        for name in sorted(installed)
+    ]
+
+
 def resolve_environment(
     task_dir: Path,
     mirror_host: str,
@@ -180,6 +230,10 @@ def resolve_environment(
         )
         resolved = inspect_image(images[0], log_dir, "resolve")
         frozen = frozen_environment(resolved, mirror_host, base_commit)
+        comparison = check_native_versions(task_dir, environment, frozen)
+        (log_dir / "native-versions.json").write_text(
+            json.dumps(comparison, indent=2) + "\n"
+        )
         (log_dir / "environment.arm64.yml").write_text(frozen)
         build_image(
             task_dir,

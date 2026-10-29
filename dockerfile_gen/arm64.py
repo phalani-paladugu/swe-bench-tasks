@@ -34,6 +34,7 @@ NATIVE_RUNTIME = set(
 libgcc libgcc-ng libgomp libstdcxx libstdcxx-ng libgfortran libgfortran-ng
 libgfortran4 libgfortran5 liblzma libnsl libsqlite libuuid libxcrypt libzlib
 ncurses openssl readline sqlite tk tzdata xz zlib zstd ld_impl_linux-aarch64
+liblzma-devel xz-tools xz-gpl-tools
 blas blas-devel libblas libcblas liblapack liblapacke openblas libopenblas""".split()
 )
 # Unavailable in the ARM64 mirror; PyPI provides a platform-independent wheel.
@@ -83,8 +84,10 @@ RUN adduser --disabled-password --gecos 'dog' nonroot
 """
 
 
-def arm_environment(text: str, *, pinned: bool = False) -> str:
-    """Retain application/pip versions; re-solve native runtime pins for ARM64."""
+def arm_environment(
+    text: str, *, pinned: bool = False, native_versions: dict | None = None
+) -> str:
+    """Keep x86 versions, selecting ARM builds and explicit native substitutions."""
     environment = yaml.safe_load(text)
     if not isinstance(environment, dict) or not isinstance(
         environment.get("dependencies"), list
@@ -121,12 +124,14 @@ def arm_environment(text: str, *, pinned: bool = False) -> str:
             if name == "ld_impl_linux-64":
                 name = "ld_impl_linux-aarch64"
                 dependency = dependency.replace("ld_impl_linux-64", name, 1)
-            if name in NATIVE_RUNTIME and re.fullmatch(
-                r"[\w.-]+=[^=]+(?:=.*)?", dependency
-            ):
-                dependency = name
-            else:
-                dependency = re.sub(r"^([\w.-]+=[^=]+)=.+$", r"\1", dependency)
+            dependency = re.sub(r"^([\w.-]+=[^=]+)=.+$", r"\1", dependency)
+            exact = re.fullmatch(r"[\w.-]+={1,2}([\w.!+-]+)", dependency)
+            if name in NATIVE_RUNTIME:
+                replacement = (native_versions or {}).get(name)
+                if replacement:
+                    dependency = f"{name}=={replacement['version']}"
+                elif exact:
+                    dependency = f"{name}=={exact[1]}"
             if dependency in CONDA_TO_PIP:
                 migrated.append(CONDA_TO_PIP[dependency])
                 continue
@@ -151,6 +156,63 @@ def arm_environment(text: str, *, pinned: bool = False) -> str:
     )
 
 
+def load_native_versions(task_dir: Path) -> dict:
+    path = task_dir / "native-versions.arm64.yml"
+    if not path.is_file():
+        return {}
+    versions = yaml.safe_load(path.read_text())
+    if not isinstance(versions, dict):
+        raise ValueError(f"{path}: expected package names mapped to version/reason")
+    reference = yaml.safe_load((task_dir / "environment.yml").read_text())
+    names = {
+        re.split(r"[=<>!~ ]", pin.split("::")[-1])[0].replace(
+            "ld_impl_linux-64", "ld_impl_linux-aarch64"
+        )
+        for pin in reference["dependencies"]
+        if isinstance(pin, str)
+    }
+    for name, entry in versions.items():
+        if (
+            name not in NATIVE_RUNTIME
+            or name not in names
+            or not isinstance(entry, dict)
+            or set(entry) != {"version", "reason"}
+            or not isinstance(entry["version"], str)
+            or not re.fullmatch(r"[\w.!+-]+", entry["version"])
+            or not isinstance(entry["reason"], str)
+            or not entry["reason"].strip()
+        ):
+            raise ValueError(f"{path}: invalid native version override for {name!r}")
+    return versions
+
+
+def relock_native_environment(task_dir: Path, environment: str | None = None) -> str:
+    """Rebase native requirements on x86 while preserving ARM application versions."""
+    source = (task_dir / "environment.yml").read_text()
+    converted = yaml.safe_load(
+        arm_environment(source, native_versions=load_native_versions(task_dir))
+    )
+    if environment is None:
+        return yaml.safe_dump(converted, sort_keys=False)
+    current = yaml.safe_load(arm_environment(environment, pinned=True))
+    native = [
+        pin
+        for pin in converted["dependencies"]
+        if isinstance(pin, str) and re.split(r"[=<>!~ ]", pin)[0] in NATIVE_RUNTIME
+    ]
+    applications = []
+    for pin in current["dependencies"]:
+        if isinstance(pin, dict):
+            applications.append(pin)
+        elif re.split(r"[=<>!~ ]", pin)[0] not in NATIVE_RUNTIME:
+            # A different ARM build of the same application version may use older runtimes.
+            applications.append(
+                re.sub(r"^([\w.-]+)=([\w.!+-]+)=[\w.+-]+$", r"\1==\2", pin)
+            )
+    converted["dependencies"] = native + applications
+    return yaml.safe_dump(converted, sort_keys=False)
+
+
 def write_dependencies(
     task_dir: Path, instance: dict, specs: dict, environment: str | None = None
 ) -> str:
@@ -165,7 +227,12 @@ def write_dependencies(
     else:
         # Reuse the repository's Python/package/requirements.txt setup for dev tasks.
         return make_env_script_list(instance, specs)
-    text = arm_environment(text, pinned=environment is not None or arm_file.is_file())
+    pinned = environment is not None or arm_file.is_file()
+    text = arm_environment(
+        text,
+        pinned=pinned,
+        native_versions=load_native_versions(task_dir) if not pinned else None,
+    )
     parsed = yaml.safe_load(text)
     pip = [
         pin
@@ -266,6 +333,11 @@ def main() -> None:
         action="store_true",
         help="Rebuild and verify even when an ARM64 snapshot already exists",
     )
+    mode.add_argument(
+        "--relock-native",
+        action="store_true",
+        help="Align native versions with x86 and task overrides, retaining ARM application versions",
+    )
     parser.add_argument("--logs-dir", type=Path, default=Path("logs/arm64"))
     parser.add_argument(
         "--keep-images",
@@ -289,8 +361,12 @@ def main() -> None:
             if not saved.is_file():
                 saved = task / "environment.arm64.yml"
             environment = saved.read_text() if saved.is_file() else None
+            if args.relock_native:
+                environment = relock_native_environment(task, environment)
             needs_resolution = environment is None or not is_fully_pinned(environment)
-            if not args.draft and (args.refresh_lock or needs_resolution):
+            if not args.draft and (
+                args.refresh_lock or args.relock_native or needs_resolution
+            ):
                 environment = resolve_environment(
                     task,
                     args.artifactory_host,

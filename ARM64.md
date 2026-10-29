@@ -29,7 +29,8 @@ The default command produces pinned task dependencies. When a fully pinned
 4. Generate and build a second Dockerfile containing those exact pins.
 5. Inspect both images without network access. Check ARM64 architecture,
    internal Conda mirror URLs, base commit, removed Git remotes, matching
-   Conda/pip exports, and matching installed third-party Python versions.
+   Conda/pip exports, requested native version pins, and matching installed
+   third-party Python versions.
 6. Only after verification succeeds, save `environment.arm64.yml` and embed it
    in the final `Dockerfile`, preserving the x86 file as `Dockerfile.amd`.
 
@@ -41,6 +42,19 @@ Later runs reuse a fully pinned ARM64 snapshot without building. Use
 `--refresh-lock` to rebuild and verify it again. This respects the snapshot's
 constraints; to select newer packages, edit or remove the relevant pins first.
 Build failures leave the task's existing Dockerfile and snapshot unchanged.
+
+To bring an existing ARM64 snapshot's native runtime versions closer to x86:
+
+```bash
+dockerfile-gen-arm64 --instance_ids astropy__astropy-6938 --relock-native
+```
+
+This retains the existing ARM64 Python and application package versions, including
+pip pins, and replaces native requirements with the task's x86 version pins plus
+the explicit exceptions in `native-versions.arm64.yml`. Conda may choose different
+ARM builds of the retained application versions to satisfy those runtimes.
+ARM-only native dependencies are resolved again instead of carrying forward
+unnecessarily new pins. The command rebuilds and verifies before replacing files.
 
 Generate several tasks, or every task:
 
@@ -78,6 +92,8 @@ Logs and inspection reports are saved to `logs/arm64/<instance_id>/` (ignored by
 Git), or `--logs-dir <directory>`. They include `resolve.Dockerfile`,
 `verify.Dockerfile`, both build logs, `resolve.json`, `verify.json`, and the
 exported `environment.arm64.yml`. Rerunning the same task replaces these logs.
+`native-versions.json` compares x86 versions, requested native pins, and the
+installed ARM64 versions, including the reasons for declared exceptions.
 Temporary image tags are removed on completion; Docker's build cache remains.
 Use `--keep-images` to retain the printed image tags for further tests.
 
@@ -90,12 +106,36 @@ Environment selection is:
 2. Otherwise, convert the task's `environment.yml`: keep Python and application
    versions and the pip section, remove Conda build identifiers, remove
    x86/defaults implementation packages such as `_libgcc_mutex` and `numpy-base`,
-   change the linker to `ld_impl_linux-aarch64`, and release the native runtime
-   exact version pins listed in `NATIVE_RUNTIME` so Conda can select compatible
-   builds. Explicit version ranges are retained; empty pip sections are omitted.
+   change the linker to `ld_impl_linux-aarch64`, and retain native versions using
+   exact Conda `name==version` requirements. For names in `NATIVE_RUNTIME`, only
+   explicit task overrides can change those versions. Explicit input version
+   ranges are retained; empty pip sections are omitted.
 3. Tasks without a snapshot use the existing repository/version specifications.
    Requirements files are fetched at `environment_setup_commit`, falling back
    to `base_commit`, so those tasks need GitHub access during generation.
+
+Some x86 defaults-channel versions are absent from ARM64 conda-forge, and some
+ARM64 Python builds require newer runtimes than their x86 equivalents. Declare
+these exceptions in `tasks/<instance_id>/native-versions.arm64.yml`:
+
+```yaml
+libffi:
+  version: "3.4.6"
+  reason: "3.4.4 is unavailable; use a nearby release in the same 3.4 series."
+```
+
+Each entry must name a native package in the x86 snapshot and supply an exact
+version string and a nonempty reason. These overrides apply when converting the
+x86 environment or running `--relock-native`; normal runs reuse the saved ARM64
+snapshot. The generator checks that the installed native versions match the
+requested pins. It does not silently remove constraints or automatically choose
+a nearest version. A failed solve requires inspecting the mirror and recording a
+compatible exception. Tasks without an x86 snapshot have no native reference
+versions to preserve; their first successful resolution is frozen as before.
+
+The three included Astropy tasks have separately verified overrides. Other tasks
+may need their own exceptions. A single global runtime version would not fit both
+legacy Python 3.6 and newer Python 3.9 builds.
 
 Legacy Astropy snapshots request `setuptools=38.2.4`, which is unavailable as an
 ARM64 Conda package in the mirror. The converter keeps version 38.2.4 and installs
@@ -126,9 +166,23 @@ benchmark tests.
 
 | Task | Dockerfile | Validation |
 | --- | --- | --- |
-| `astropy__astropy-6938` | [Dockerfile](tasks/astropy__astropy-6938/Dockerfile) | Resolve/export/rebuild verified: 27 Conda build pins, 41 pip pins, Python 3.6.13; table/FITS smoke checks and all 11 baseline PASS_TO_PASS tests passed |
-| `astropy__astropy-11693` | [Dockerfile](tasks/astropy__astropy-11693/Dockerfile) | Resolve/export/rebuild verification passed: 31 Conda build pins, 26 pip pins, Python 3.9.21; import/table smoke tests passed |
-| `astropy__astropy-13236` | [Dockerfile](tasks/astropy__astropy-13236/Dockerfile) | ARM64 build, dependency versions, Git checkout, and import/table smoke test passed |
+| `astropy__astropy-6938` | [Dockerfile](tasks/astropy__astropy-6938/Dockerfile) | Resolve/export/rebuild verified: 21 Conda build pins, 41 pip pins, Python 3.6.13; table/FITS smoke checks and all 11 baseline PASS_TO_PASS tests passed |
+| `astropy__astropy-11693` | [Dockerfile](tasks/astropy__astropy-11693/Dockerfile) | Resolve/export/rebuild verified: 30 Conda build pins, 26 pip pins, Python 3.9.21; table/FITS smoke checks and 27 baseline PASS_TO_PASS tests passed with the warning filter below |
+| `astropy__astropy-13236` | [Dockerfile](tasks/astropy__astropy-13236/Dockerfile) | Resolve/export/rebuild verified: 31 Conda build pins, 26 pip pins, Python 3.9.23; table/FITS smoke checks passed; original table tests matched the previous image's results, including two existing failures |
+
+Astropy 11693's unmodified offline baseline run passed 26 tests and failed one
+because the bundled leap-second data is expired. All 27 passed when rerun with
+only `-W 'ignore:leap-second file is expired.:astropy.utils.iers.IERSStaleWarning'`.
+This filter was used for validation only; the Dockerfile and task tests do not
+include it.
+
+For Astropy 13236, three upstream PASS_TO_PASS selectors do not match the
+unpatched checkout: one needs the task's test patch, and two contain truncated
+parameter names. Running the original `test_mixin.py` and `test_table.py` files
+instead produced 644 passed, 2 failed, 25 skipped, and 1 xfailed. The previous ARM64
+image produced the same counts and the same failures in
+`test_skycoord_representation` and `test_values_equal_part1`. These existing
+application-level failures were not changed by the native-runtime update.
 
 Full benchmark evaluation has not been run for these ARM64 images.
 
@@ -151,9 +205,11 @@ The Astropy Dockerfile uses Arm's internal Conda mirror. The default host is
 with `--build-arg ARTIFACTORY_HOST=<hostname>`. The builder needs access to that
 mirror, GitHub, PyPI, and Ubuntu package repositories.
 
-Astropy 13236 preserves the successful ARM64 build's 23 Conda version/build
-pins and 28 Python distribution versions, including Python 3.9.23 and coverage
-7.10.7. Astropy is installed from commit
+Astropy 13236 retains Python 3.9.23 and the successful ARM64 build's 28 third-party
+Python distribution versions, including coverage 7.10.7. Its native runtime
+versions now follow x86 where compatible, with exceptions documented in
+`native-versions.arm64.yml`. The snapshot freezes 31 Conda version/build pins
+and 26 pip pins. Astropy is installed from commit
 `6ed769d58d89380ebaa1ef52b300691eefda8928`.
 
 Inspect the image without network access:
@@ -177,8 +233,10 @@ ARM64 image for evaluation requires separate harness configuration.
 ## Add another task
 
 Run `dockerfile-gen-arm64 --instance_ids <task_id>` to build, freeze, and verify
-the task, then commit its `Dockerfile`, `Dockerfile.amd`, and
-`environment.arm64.yml`. Update the table above with the task and the checks
+the task. If exact x86 native versions cannot be resolved, record compatible
+exceptions in `native-versions.arm64.yml` and rerun. Commit its `Dockerfile`,
+`Dockerfile.amd`, `environment.arm64.yml`, and any native overrides. Update the
+table above with the task and the checks
 completed. Shared files such as
 `eval.sh`, patches, and task metadata remain available in the same task folder.
 
@@ -186,26 +244,21 @@ completed. Shared files such as
 
 Run focused tests with `python -m unittest discover -s tests -v`.
 
-On 2026-10-28, all 23 focused tests passed. The full draft check before the legacy
-setuptools fix covered all 2,519 tasks: all 7,557 shell blocks passed syntax checks
-and the x86 archives matched the source files byte-for-byte. After the fix, all
-11 affected legacy drafts passed generation and shell syntax checks; generated
-Dockerfiles for Astropy 11693 and 13236 remained byte-for-byte unchanged.
+On 2026-10-28, all 28 focused tests passed, including exact native constraints,
+override validation, preservation of ARM application versions during relocking,
+and rejection of native version drift. Ruff checks passed. All 2,519 tasks
+generated in draft mode with the stricter native policy; all archived x86
+Dockerfiles matched their source files byte-for-byte. Draft generation does not
+establish that a task's dependencies can resolve on ARM64.
 
-The complete resolve/export/rebuild pipeline passed for Astropy 11693: both
-images matched 31 Conda version/build pins, 26 pip pins, and all 28 third-party
-Python distribution versions. Offline import/table tests passed in both images.
-The saved Dockerfile matched the verified build input, and a subsequent command
-reused the snapshot without changing the generated files.
+All three included tasks passed the complete resolve/export/rebuild pipeline,
+native-pin comparison, and offline table/FITS smoke checks. Their Python versions
+and previous third-party Python distribution versions were retained: 44 for
+Astropy 6938, 28 for 11693, and 28 for 13236. Saved Dockerfiles matched the verified
+build inputs, x86 archives were unchanged, and repeat generation reused the
+verified snapshots without changing the files. Reports for this validation run
+are in `logs/arm64/native-pins/<instance_id>/` (ignored by Git).
+See the table above for baseline test results and their limitations.
 
-The same pipeline passed for legacy Astropy 6938, preserving Python 3.6.13 and
-all 44 original third-party Python distribution versions, including setuptools
-38.2.4 and NumPy 1.16.0. Both images passed offline table/FITS smoke checks and
-the task's 11 baseline PASS_TO_PASS tests. The exported environment contains
-27 Conda version/build pins and 41 pip pins. Its original x86 Dockerfile was
-preserved, and repeat generation reused the verified snapshot unchanged.
-
-Earlier ARM64 builds and import/table smoke tests passed for Astropy 13236
-(saved ARM64 pins) and Astropy 14309 (converted x86 snapshot), with dependency
-versions, mirror URLs, and base commits checked. The remaining generated images
-have not been built, and full benchmark evaluations have not been run.
+Other tasks may need native overrides before they can build. The full benchmark,
+including evaluation with the task's test and solution patches, has not been run.

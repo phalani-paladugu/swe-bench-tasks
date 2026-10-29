@@ -1,0 +1,39 @@
+_openmp_mutex:
+  version: '4.5'
+  reason: conda-forge provides 4.5; the defaults-channel version 5.1 is unavailable.
+tk:
+  version: 8.6.13
+  reason: 8.6.14 is unavailable; retain the 8.6 series with 8.6.13.
+ca-certificates:
+  version: 2024.8.30
+  reason: Nearby earlier conda-forge release; the exact x86 certificate-bundle version is unavailable.
+libffi:
+  version: 3.4.6
+  reason: 3.4.4 is unavailable; use the nearby newer 3.4.6 release.
+libgcc-ng:
+  version: 13.3.0
+  reason: Python requires libgcc >=13; 13.3.0 is the earliest available split libgcc runtime. Keep the
+    GCC runtime packages aligned.
+libgomp:
+  version: 13.3.0
+  reason: Python requires libgcc >=13; 13.3.0 is the earliest available split libgcc runtime. Keep the
+    GCC runtime packages aligned.
+libstdcxx-ng:
+  version: 13.3.0
+  reason: Python requires libgcc >=13; 13.3.0 is the earliest available split libgcc runtime. Keep the
+    GCC runtime packages aligned.
+ncurses:
+  version: '6.5'
+  reason: Minimum ncurses version required by the selected ARM64 Python/SQLite builds.
+openssl:
+  version: 3.5.0
+  reason: Minimum OpenSSL version required by the existing ARM64 Python version.
+sqlite:
+  version: 3.50.0
+  reason: Minimum SQLite version required by the existing ARM64 Python version.
+xz:
+  version: 5.8.1
+  reason: Python 3.9.23 requires liblzma >=5.8.1; keep xz and liblzma aligned.
+zlib:
+  version: 1.3.1
+  reason: The ARM64 Python build requires libzlib >=1.3.1; keep zlib and libzlib aligned.

@@ -28,46 +28,45 @@ ENV PATH=/opt/miniconda3/bin:$PATH
 RUN conda init --all
 RUN adduser --disabled-password --gecos 'dog' nonroot
 
-RUN <<EOF_36255d6b7e32
+RUN <<EOF_4b0f38359cb6
 #!/bin/bash
 set -euxo pipefail
 source /opt/miniconda3/bin/activate
-cat > /root/environment.yml <<'EOF_5cbef73ba3de'
+cat > /root/environment.yml <<'EOF_210b773e10cf'
 name: testbed
 channels:
 - conda-forge
 dependencies:
 - _openmp_mutex=4.5=20_gnu
-- bzip2=1.0.8=h4777abc_10
-- ca-certificates=2026.10.23=hbd8a1cb_0
-- ld_impl_linux-aarch64=2.46.1=default_h1979696_103
-- libffi=3.7.0=hdaad0be_1
-- libgcc-ng=16.2.0=he9431aa_7
-- libgcc=16.2.0=h205dda4_7
-- libgomp=16.2.0=h8acb6b2_7
-- liblzma-devel=5.8.3=he30d5cf_1
-- liblzma=5.8.3=he30d5cf_1
+- bzip2=1.0.8=h68df207_7
+- ca-certificates=2024.12.14=hcefe29a_0
+- ld_impl_linux-aarch64=2.40=h9fc2d93_7
+- libffi=3.4.6=he21f813_1
+- libgcc-ng=13.3.0=he9431aa_2
+- libgcc=13.3.0=he277a41_2
+- libgomp=13.3.0=he277a41_2
+- liblzma-devel=5.6.4=h86ecc28_0
+- liblzma=5.6.4=h86ecc28_0
 - libnsl=2.0.1=h86ecc28_1
-- libsqlite=3.54.1=hd26f1b6_101
-- libstdcxx-ng=16.2.0=hdbbeba8_7
-- libstdcxx=16.2.0=hef695bb_7
-- libuuid=2.42.4=hd6fdeab_0
-- libxcrypt=4.4.38=h80f16a2_0
-- libzlib=1.3.2=hdc9db2a_3
-- ncurses=6.6=h2b6f883_1
-- openssl=3.6.5=he6ad1d5_0
+- libsqlite=3.47.0=hc4a20ef_1
+- libstdcxx-ng=13.3.0=hf1166c9_2
+- libstdcxx=13.3.0=h3f4de04_2
+- libuuid=2.38.1=hb4cce97_0
+- libxcrypt=4.4.36=h31becfc_1
+- libzlib=1.3.1=h86ecc28_2
+- ncurses=6.5=ha32ae93_3
+- openssl=3.4.0=hd08dc88_1
 - pip=25.0.1=pyh8b19718_0
-- python=3.9.21=h59a44ae_2_cpython
-- readline=8.3=ha7194a6_1
-- sqlite=3.54.1=h363059a_101
-- tk=8.6.13=noxft_hf03c496_4
-- tzdata=2026e=h5d301ff_0
+- python=3.9.21=hb97c71e_1_cpython
+- readline=8.2=h8382b9d_2
+- sqlite=3.47.0=h578a6b9_1
+- tk=8.6.13=noxft_h561c983_103
+- tzdata=2025a=h78e105d_0
 - wheel=0.45.1=pyhd8ed1ab_1
-- xz-gpl-tools=5.8.3=hd704e39_1
-- xz-tools=5.8.3=he30d5cf_1
-- xz=5.8.3=hd704e39_1
-- zlib=1.3.2=hdc9db2a_3
-- zstd=1.5.7=h9d15635_7
+- xz-gpl-tools=5.6.4=h2dbfc1b_0
+- xz-tools=5.6.4=h86ecc28_0
+- xz=5.6.4=h2dbfc1b_0
+- zlib=1.3.1=h86ecc28_2
 - pip:
   - attrs==23.1.0
   - coverage==7.6.12
@@ -95,9 +94,9 @@ dependencies:
   - setuptools==68.0.0
   - sortedcontainers==2.4.0
   - tomli==2.0.1
-EOF_5cbef73ba3de
+EOF_210b773e10cf
 conda env create --file /root/environment.yml
-EOF_36255d6b7e32
+EOF_4b0f38359cb6
 
 RUN echo "source /opt/miniconda3/etc/profile.d/conda.sh && conda activate testbed" > /root/.bashrc
 

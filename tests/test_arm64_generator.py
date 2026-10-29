@@ -132,8 +132,8 @@ class Arm64GeneratorTests(unittest.TestCase):
                 "dependencies": [
                     "python=3.9.20",
                     "numpy=1.25.2",
-                    "ld_impl_linux-aarch64",
-                    "openssl",
+                    "ld_impl_linux-aarch64==2.40",
+                    "openssl==3.0.15",
                     {"pip": ["pytest==7.4.0", "coverage==7.6.2"]},
                 ],
             },
@@ -146,9 +146,6 @@ class Arm64GeneratorTests(unittest.TestCase):
             arm64.arm_environment(yaml.safe_dump(source), pinned=True)
         )
         self.assertEqual(result["dependencies"], source["dependencies"])
-        self.assertEqual(
-            len([d for d in result["dependencies"] if isinstance(d, str)]), 23
-        )
 
     def test_rejects_x86_pins_in_arm_override_and_external_conda_sources(self):
         for dependency in (
