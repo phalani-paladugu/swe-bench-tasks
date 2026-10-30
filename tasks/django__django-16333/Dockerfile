@@ -1,5 +1,5 @@
-
-FROM --platform=linux/amd64 ubuntu:jammy
+# syntax=docker/dockerfile:1
+FROM --platform=linux/arm64 ubuntu:22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
@@ -15,58 +15,96 @@ python3-pip \
 python-is-python3 \
 jq \
 curl \
+ca-certificates \
+bzip2 \
 locales \
 locales-all \
 tzdata \
 && rm -rf /var/lib/apt/lists/*
 
-# Download and install conda
-RUN wget 'https://repo.anaconda.com/miniconda/Miniconda3-py311_23.11.0-2-Linux-x86_64.sh' -O miniconda.sh \
-    && bash miniconda.sh -b -p /opt/miniconda3
+# Install Conda from the internal mirror.
+ARG ARTIFACTORY_HOST=us-west-2.artifactory.aws.arm.com
+ENV CONDARC=/etc/conda/condarc
+
+RUN <<'BOOTSTRAP_CONDA'
+set -eu
+mkdir -p /etc/conda /tmp/swebench-micromamba
+cat > /etc/conda/condarc <<CONDARC_CONFIG
+channel_alias: https://${ARTIFACTORY_HOST}/artifactory/api/conda/
+default_channels:
+  - conda-forge
+channels:
+  - defaults
+CONDARC_CONFIG
+
+curl -fSL --retry 3 \
+    "https://${ARTIFACTORY_HOST}/artifactory/conda-forge/linux-aarch64/micromamba-2.1.0-0.tar.bz2" \
+    -o /tmp/swebench-micromamba/micromamba.tar.bz2
+tar -xjf /tmp/swebench-micromamba/micromamba.tar.bz2 \
+    -C /tmp/swebench-micromamba bin/micromamba
+/tmp/swebench-micromamba/bin/micromamba \
+    --rc-file /etc/conda/condarc create -y \
+    -p /opt/miniconda3 \
+    --override-channels -c conda-forge \
+    mamba \
+    conda
+rm -rf /tmp/swebench-micromamba
+BOOTSTRAP_CONDA
+
 # Add conda to PATH
 ENV PATH=/opt/miniconda3/bin:$PATH
 # Add conda to shell startup scripts like .bashrc (DO NOT REMOVE THIS)
 RUN conda init --all
-RUN conda config --append channels conda-forge
 
 RUN adduser --disabled-password --gecos 'dog' nonroot
 
-RUN <<EOF_2055bf9757f4
+RUN <<EOF_a8088155f6ba
 #!/bin/bash
 set -euxo pipefail
 source /opt/miniconda3/bin/activate
-cat <<'EOF_e36ccda34249' > /root/environment.yml
+cat > /root/environment.yml <<'EOF_5da140c262c8'
 name: testbed
 channels:
-  - defaults
   - conda-forge
 dependencies:
-  - _libgcc_mutex=0.1=main
-  - _openmp_mutex=5.1=1_gnu
-  - ca-certificates=2024.9.24=h06a4308_0
-  - ld_impl_linux-64=2.40=h12ee557_0
-  - libffi=3.4.4=h6a678d5_1
-  - libgcc-ng=11.2.0=h1234567_1
-  - libgomp=11.2.0=h1234567_1
-  - libstdcxx-ng=11.2.0=h1234567_1
-  - ncurses=6.4=h6a678d5_0
-  - openssl=3.0.15=h5eee18b_0
-  - pip=24.2=py39h06a4308_0
-  - python=3.9.20=he870216_1
-  - readline=8.2=h5eee18b_0
-  - setuptools=75.1.0=py39h06a4308_0
-  - sqlite=3.45.3=h5eee18b_0
-  - tk=8.6.14=h39e8969_0
-  - wheel=0.44.0=py39h06a4308_0
-  - xz=5.4.6=h5eee18b_1
-  - zlib=1.2.13=h5eee18b_1
+  - _openmp_mutex=4.5=20_gnu
+  - bzip2=1.0.8=h68df207_7
+  - ca-certificates=2024.8.30=hcefe29a_0
+  - ld_impl_linux-aarch64=2.40=h9fc2d93_7
+  - libffi=3.4.6=he21f813_1
+  - libgcc-ng=13.3.0=he9431aa_2
+  - libgcc=13.3.0=he277a41_2
+  - libgomp=13.3.0=he277a41_2
+  - liblzma-devel=5.6.3=h86ecc28_1
+  - liblzma=5.6.3=h86ecc28_1
+  - libnsl=2.0.1=h86ecc28_1
+  - libsqlite=3.46.1=hc4a20ef_0
+  - libstdcxx-ng=13.3.0=hf1166c9_2
+  - libstdcxx=13.3.0=h3f4de04_2
+  - libuuid=2.38.1=hb4cce97_0
+  - libxcrypt=4.4.36=h31becfc_1
+  - libzlib=1.3.1=h86ecc28_2
+  - ncurses=6.5=ha32ae93_3
+  - openssl=3.3.2=h86ecc28_0
+  - pip=24.2=pyh8b19718_1
+  - python=3.9.20=h4a649e4_1_cpython
+  - readline=8.2=h8382b9d_2
+  - setuptools=75.1.0=pyhd8ed1ab_0
+  - sqlite=3.46.1=h578a6b9_0
+  - tk=8.6.13=noxft_h561c983_103
+  - tzdata=2026e=h5d301ff_0
+  - wheel=0.44.0=pyhd8ed1ab_0
+  - xz-gpl-tools=5.6.3=h2dbfc1b_1
+  - xz-tools=5.6.3=h86ecc28_1
+  - xz=5.6.3=h2dbfc1b_1
+  - zlib=1.3.1=h86ecc28_2
   - pip:
       - aiohappyeyeballs==2.4.3
       - aiohttp==3.10.9
       - aiosignal==1.3.1
       - aiosmtpd==1.4.6
-      - argon2-cffi==23.1.0
       - argon2-cffi-bindings==21.2.0
+      - argon2-cffi==23.1.0
       - asgiref==3.8.1
       - async-timeout==4.0.3
       - atpublic==5.0
@@ -110,21 +148,17 @@ dependencies:
       - sqlparse==0.5.1
       - tblib==3.0.0
       - tomli==2.0.2
-      - trio==0.26.2
       - trio-websocket==0.11.1
+      - trio==0.26.2
       - typing-extensions==4.12.2
       - tzdata==2024.2
       - urllib3==2.2.3
       - websocket-client==1.8.0
       - wsproto==1.2.0
       - yarl==1.14.0
-prefix: /opt/miniconda3/envs/testbed
-
-EOF_e36ccda34249
-conda env create -f /root/environment.yml
-conda activate testbed
-EOF_2055bf9757f4
-
+EOF_5da140c262c8
+conda env create --file /root/environment.yml
+EOF_a8088155f6ba
 
 RUN echo "source /opt/miniconda3/etc/profile.d/conda.sh && conda activate testbed" > /root/.bashrc
 
@@ -157,6 +191,5 @@ git config --global user.email setup@swebench.com
 git config --global user.name SWE-bench
 git commit --allow-empty -am SWE-bench
 EOF_cab79c2f40cf
-
 
 WORKDIR /testbed/
