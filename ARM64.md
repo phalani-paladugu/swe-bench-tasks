@@ -125,8 +125,9 @@ ARM64 Python builds require newer runtimes than their x86 equivalents. The share
 profiles in [dockerfile_gen/native_profiles.py](dockerfile_gen/native_profiles.py)
 reuse validated substitutions across tasks. A substitution applies only when both
 the effective Python version and the original native package version match its
-profile entry. The shared profiles cover Python 3.9.20 and 3.11.10; unknown Python
-versions, native versions, and version ranges retain their original constraints.
+profile entry. The shared profiles cover Python 3.6.13, 3.8.20, 3.9.20, 3.9.21,
+and 3.11.10; unknown Python versions, native versions, and version ranges retain
+their original constraints.
 When relocking an existing ARM snapshot, profile selection uses its retained Python
 version. Task-specific overrides take precedence over a shared profile.
 
@@ -153,6 +154,15 @@ as before.
 The included ARM64 Astropy tasks have separately verified overrides. Other tasks
 may need their own exceptions. A single global runtime version would not fit both
 legacy Python 3.6 and newer Python 3.9 builds.
+
+The Python 3.6.13 profile keeps the older OpenSSL 1.1.1w, SQLite 3.45.3, and
+libffi 3.3 requirements, with compatible GCC 12.1.0 runtimes. Python 3.8.20 uses
+the same substitutions as 3.9.20. Python 3.9.21 selects OpenSSL 3.4.0 and SQLite
+3.47.0 for its older compatible ARM build, and replaces the unavailable
+`ca-certificates=2024.11.26` with `2024.12.14`. Other certificate versions still
+need their own matching rule or task override. The C++ runtime is kept aligned
+with the selected GCC runtime; this is a consistency choice, not a direct
+Python requirement. Python and application package versions are preserved.
 
 Legacy Astropy snapshots request `setuptools=38.2.4`, which is unavailable as an
 ARM64 Conda package in the mirror. The converter keeps version 38.2.4 and installs
@@ -187,8 +197,11 @@ benchmark tests.
 | `astropy__astropy-11693` | [Dockerfile](tasks/astropy__astropy-11693/Dockerfile) | Resolve/export/rebuild verified: 30 Conda build pins, 26 pip pins, Python 3.9.21; table/FITS smoke checks and 27 baseline PASS_TO_PASS tests passed with the warning filter below |
 | `astropy__astropy-13236` | [Dockerfile](tasks/astropy__astropy-13236/Dockerfile) | Resolve/export/rebuild verified: 31 Conda build pins, 26 pip pins, Python 3.9.23; table/FITS smoke checks passed; original table tests matched the previous image's results, including two existing failures |
 | `astropy__astropy-14309` | [Dockerfile](tasks/astropy__astropy-14309/Dockerfile) | Resolve/export/rebuild verified: 30 Conda build pins, 26 pip pins, Python 3.9.20; table/FITS smoke checks and all 141 baseline PASS_TO_PASS tests passed |
+| `django__django-13112` | [Dockerfile](tasks/django__django-13112/Dockerfile) | Resolve/export/rebuild verified: 22 Conda build pins, 42 pip pins, Python 3.6.13; database/import smoke checks and all 63 original migration-state tests passed |
+| `django__django-14855` | [Dockerfile](tasks/django__django-14855/Dockerfile) | Resolve/export/rebuild verified: 30 Conda build pins, 50 pip pins, Python 3.8.20; database/import smoke checks and all 13 original read-only admin tests passed |
 | `django__django-15104` | [Dockerfile](tasks/django__django-15104/Dockerfile) | Resolve/export/rebuild verified: 31 Conda build pins, 57 pip pins, Python 3.9.20; database/import smoke checks and all 138 original migration-autodetector tests passed |
 | `django__django-16527` | [Dockerfile](tasks/django__django-16527/Dockerfile) | Resolve/export/rebuild verified: 32 Conda build pins, 53 pip pins, Python 3.11.10; database/import smoke checks and all 6 original admin template-tag tests passed |
+| `sympy__sympy-16450` | [Dockerfile](tasks/sympy__sympy-16450/Dockerfile) | Resolve/export/rebuild verified: 36 Conda build pins, 1 pip pin, Python 3.9.21; symbolic-math smoke checks passed; original simplify tests: 41 passed, 2 expected failures |
 
 Astropy 11693's unmodified offline baseline run passed 26 tests and failed one
 because the bundled leap-second data is expired. All 27 passed when rerun with
@@ -320,6 +333,38 @@ input, and its x86 archive matched the original byte-for-byte. Reports and the
 preserved original failure are in `logs/arm64/django__django-16527/`.
 All six saved ARM64 tasks regenerated without changing their snapshots,
 Dockerfiles, or x86 archives.
+
+On 2026-10-29, shared native profiles were added for Python 3.6.13, 3.8.20,
+and 3.9.21. All 35 focused tests passed. Draft generation succeeded for the
+899 tasks using those versions (625, 156, and 118 respectively), with unchanged
+x86 archives. All 28 previously saved ARM64 tasks retained their Dockerfiles,
+snapshots, and x86 archives byte-for-byte.
+
+Django 13112 passed the complete resolve/export/rebuild pipeline using Python
+3.6.13 and GCC 12.1.0, retaining all original Python/application package versions.
+Both images matched all 22 Conda build pins, 42 pip pins, and 46 third-party
+Python distribution versions. Database/import checks and all 63 tests in the
+original `migrations.test_state` module passed offline in both images.
+
+Django 14855 passed the complete resolve/export/rebuild pipeline using Python
+3.8.20, OpenSSL 3.3.2, and SQLite 3.46.1. Both images matched all 30 Conda build
+pins, 50 pip pins, and 53 third-party Python distribution versions, retaining
+the original Python/application versions. Database/import checks and all 13
+tests in the original `admin_views.tests.ReadonlyTest` class passed offline in
+both images.
+
+SymPy 16450 passed the complete resolve/export/rebuild pipeline using Python
+3.9.21, OpenSSL 3.4.0, and SQLite 3.47.0. Both images matched all 36 Conda build
+pins, 1 pip pin, and 9 third-party Python distribution versions, retaining the
+original Python/application versions. Symbolic-math smoke checks passed, and
+the original `sympy/simplify/tests/test_simplify.py` run reported 41 passes and
+2 expected failures in both images.
+
+All three new tasks regenerated without changes. Their saved Dockerfiles matched
+the verified build inputs, and their x86 archives matched the originals
+byte-for-byte. Build, inspection, and baseline-test reports are in
+`logs/arm64/<instance_id>/`; the original failures are preserved there as
+`failed-before-native-profile.log` and `failed-before-native-profile.Dockerfile`.
 
 Other tasks may need native overrides before they can build. The full benchmark,
 including evaluation with the task's test and solution patches, has not been run.

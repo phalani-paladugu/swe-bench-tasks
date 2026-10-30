@@ -37,7 +37,7 @@ class NativeVersionTests(unittest.TestCase):
         self.assertEqual(profile["libffi"]["version"], "3.4.6")
         self.assertIn("Python 3.9.20 profile", profile["libffi"]["reason"])
         for changed in (
-            SOURCE.replace("python=3.9.20", "python=3.9.21"),
+            SOURCE.replace("python=3.9.20", "python=3.9.22"),
             SOURCE.replace("python=3.9.20", "python=3.11.11"),
             SOURCE.replace("python=3.9.20=x86_build", "python=3.9"),
             SOURCE.replace("libffi=3.4.4", "libffi=3.3"),
@@ -73,6 +73,79 @@ class NativeVersionTests(unittest.TestCase):
             result = yaml.safe_load(arm64.relock_native_environment(task, ARM))
             self.assertIn("python==3.9.23", result["dependencies"])
             self.assertIn("libffi==3.4.4", result["dependencies"])
+
+    def test_older_python_profiles_preserve_application_versions(self):
+        cases = (
+            (
+                "django__django-13112",
+                {
+                    "python=3.6.13",
+                    "libffi==3.3",
+                    "openssl==1.1.1w",
+                    "sqlite==3.45.3",
+                    "libgcc-ng==12.1.0",
+                    "libgomp==12.1.0",
+                    "xz==5.2.6",
+                },
+            ),
+            (
+                "django__django-14855",
+                {
+                    "python=3.8.20",
+                    "libffi==3.4.6",
+                    "openssl==3.3.2",
+                    "sqlite==3.46.1",
+                    "libgcc-ng==13.3.0",
+                    "libgomp==13.3.0",
+                    "xz==5.6.3",
+                },
+            ),
+            (
+                "sympy__sympy-16450",
+                {
+                    "python=3.9.21",
+                    "libffi==3.4.6",
+                    "openssl==3.4.0",
+                    "sqlite==3.47.0",
+                    "libgcc-ng==13.3.0",
+                    "libgomp==13.3.0",
+                    "ca-certificates==2024.12.14",
+                },
+            ),
+        )
+        runtime_packages = arm64.NATIVE_RUNTIME | arm64.X86_ONLY | {"ld_impl_linux-64"}
+        for task_id, expected in cases:
+            with self.subTest(task=task_id):
+                source = (Path("tasks") / task_id / "environment.yml").read_text()
+                reference = yaml.safe_load(source)
+                converted = yaml.safe_load(
+                    arm64.arm_environment(
+                        source, native_versions=native_profile(reference)
+                    )
+                )["dependencies"]
+                self.assertTrue(
+                    expected <= {d for d in converted if isinstance(d, str)}
+                )
+                for dependency in reference["dependencies"]:
+                    if isinstance(dependency, dict):
+                        self.assertIn(dependency, converted)
+                    elif dependency.split("=")[0] not in runtime_packages:
+                        self.assertIn("=".join(dependency.split("=")[:2]), converted)
+
+    def test_python_3921_certificate_rule_matches_only_its_source_version(self):
+        for version, expected in (("2024.11.26", "2024.12.14"), ("2024.12.31", None)):
+            with self.subTest(version=version):
+                profile = native_profile(
+                    {
+                        "dependencies": [
+                            "python=3.9.21=build",
+                            f"ca-certificates={version}=build",
+                        ]
+                    }
+                )
+                self.assertEqual(
+                    profile.get("ca-certificates", {}).get("version"), expected
+                )
 
     def test_task_overrides_take_precedence_over_shared_profile(self):
         with tempfile.TemporaryDirectory() as directory:

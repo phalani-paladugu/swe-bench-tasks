@@ -3,7 +3,7 @@
 import re
 
 
-# Validated with Astropy 14309 and Django 15104/16527.
+# Validation results and representative tasks are recorded in ARM64.md.
 # Each tuple is (x86 version, ARM version, reason).
 # Match both Python and the source package version; never apply to arbitrary pins.
 PROFILES = {
@@ -36,7 +36,7 @@ PROFILES = {
         "libstdcxx-ng": (
             "11.2.0",
             "13.3.0",
-            "Keep GCC runtimes aligned with libgcc 13.3.0 required by ARM Python.",
+            "Keep the C++ runtime aligned with the selected GCC 13.3.0 runtime.",
         ),
         "ncurses": (
             "6.4",
@@ -69,6 +69,61 @@ PROFILES = {
             "ARM Python requires libzlib >=1.3.1; keep zlib and libzlib aligned.",
         ),
     },
+}
+
+# Preserve the older runtime combination validated for ARM Python 3.6.13.
+PROFILES["3.6.13"] = {
+    **{
+        name: PROFILES["3.9.20"][name]
+        for name in ("_openmp_mutex", "ca-certificates", "tk")
+    },
+    "libgcc-ng": (
+        "11.2.0",
+        "12.1.0",
+        "ARM OpenSSL/readline require GCC >=12; use the validated 12.1.0 runtime.",
+    ),
+    "libgomp": (
+        "11.2.0",
+        "12.1.0",
+        "Keep libgomp matched to the selected GCC 12.1.0 runtime.",
+    ),
+    "libstdcxx-ng": (
+        "11.2.0",
+        "12.1.0",
+        "Keep the C++ runtime aligned with the selected GCC 12.1.0 runtime.",
+    ),
+    "ncurses": (
+        "6.4",
+        "6.4.20240210",
+        "Minimum ncurses version required by the selected ARM SQLite build.",
+    ),
+    "xz": (
+        "5.4.6",
+        "5.2.6",
+        "5.4.6 is unavailable; use the validated 5.2.6 build with the GCC 12 runtime.",
+    ),
+}
+
+# The mirror's Python 3.8.20 builds use the same native requirements as 3.9.20.
+PROFILES["3.8.20"] = {**PROFILES["3.9.20"]}
+
+PROFILES["3.9.21"] = {
+    **PROFILES["3.9.20"],
+    "ca-certificates": (
+        "2024.11.26",
+        "2024.12.14",
+        "The exact x86 bundle is unavailable; use the nearby newer release.",
+    ),
+    "openssl": (
+        "3.0.15",
+        "3.4.0",
+        "Minimum OpenSSL version required by the selected ARM Python 3.9.21 build.",
+    ),
+    "sqlite": (
+        "3.45.3",
+        "3.47.0",
+        "Minimum SQLite version required by the selected ARM Python 3.9.21 build.",
+    ),
 }
 
 # The mirror's Python 3.11.10 builds require the same runtime versions, plus libuuid.
